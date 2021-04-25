@@ -1,6 +1,6 @@
 Bio is a Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
 
-A description of the project is available at https://dev.to/stein/lisping-in-zig
+A description of the project is available at [dev.to](https://dev.to/stein/bio-all-your-parentheses-are-belong-to-us-25lo)
 
 Table of Contents
 =================
