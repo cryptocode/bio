@@ -1,0 +1,1129 @@
+Bio is a Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
+
+A description of the project is available at https://dev.to/stein/lisping-in-zig
+
+Table of Contents
+=================
+
+   * [Building and running](#building-and-running)
+      * [Running tests](#running-tests)
+   * [Language Reference](#language-reference)
+      * [Naming conventions](#naming-conventions)
+      * [Intrinsics](#intrinsics)
+         * [nil](#nil)
+         * [#t and #f](#t-and-f)
+         * [#! and #value](#-and-value)
+         * [typename](#typename)
+         * [number? symbol? list? bool? callable?](#number-symbol-list-bool-callable)
+         * [var and define](#var-and-define)
+         * [set! and unset!](#set-and-unset)
+         * [arithmetic functions](#arithmetic-functions)
+         * [equality](#equality)
+         * [order](#order)
+         * [env and gc](#env-and-gc)
+         * [lambda and λ](#lambda-and-λ)
+         * [macro](#macro)
+         * [self and environment lookups](#self-and-environment-lookups)
+         * [&amp;rest](#rest)
+         * [quote](#quote)
+         * [quasiquote](#quasiquote)
+         * [unquote](#unquote)
+         * [unquote-splicing](#unquote-splicing)
+         * [eval](#eval)
+         * [apply](#apply)
+         * [gensym](#gensym)
+         * [if](#if)
+         * [cond](#cond)
+         * [begin](#begin)
+         * [try](#try)
+         * [error](#error)
+         * [print and readline](#print-and-readline)
+         * [as](#as)
+         * [list](#list)
+         * [append](#append)
+         * [range](#range)
+         * [len](#len)
+         * [string](#string)
+         * [import](#import)
+         * [assert](#assert)
+         * [exit](#exit)
+         * [verbose](#verbose)
+         * [math.pi and math.e](#mathpi-and-mathe)
+         * [math.floor](#mathfloor)
+      * [Standard library](#standard-library)
+         * [car, cdr, caar, cadr, cddr, caddr, last, nth](#car-cdr-caar-cadr-cddr-caddr-last-nth)
+         * [cons](#cons)
+         * [nil?](#nil-1)
+         * [atom?](#atom)
+         * [bool?](#bool)
+         * [relational functions](#relational-functions)
+         * [logical functions](#logical-functions)
+         * [let macro](#let-macro)
+         * [filter](#filter)
+         * [map](#map)
+         * [quicksort](#quicksort)
+         * [while macro](#while-macro)
+         * [each](#each)
+         * [io.read-number and io.read-string](#ioread-number-and-ioread-string)
+         * [typename](#typename-1)
+         * [time.now](#timenow)
+         * [double-quote](#double-quote)
+         * [inc! and dec!](#inc-and-dec)
+         * [file i/o](#file-io)
+         * [math.odd? math.even? odd-items and even-items](#mathodd-matheven-odd-items-and-even-items)
+         * [math.abs](#mathabs)
+         * [math.pow](#mathpow)
+         * [math.average](#mathaverage)
+         * [math.sqrt](#mathsqrt)
+         * [math.safe-div](#mathsafe-div)
+         * [math.make-random-generator and math.random-list](#mathmake-random-generator-and-mathrandom-list)
+         * [math.fib and math.fact](#mathfib-and-mathfact)
+         * [Y](#y)
+      * [Modules](#modules)
+         * [Module example](#module-example)
+
+# Building and running
+
+Clone the repository and cd to the root directory. You'll need a recent [master build of Zig](https://ziglang.org/download/)
+
+**Build**
+
+```bash
+zig build
+```
+
+**Run the REPL:**
+
+```bash
+./bio
+```
+
+**Run a Bio source file:**
+
+```bash
+./bio run examples/triangles.lisp
+```
+
+You can also use `import` to evaluate files from the REPL, e.g. `(import "examples/albums.lisp")`
+
+## Running tests
+
+The test suite in `test.lisp` can be evaluated with `zig test bio.zig` or `bio run test.lisp`
+
+# Language Reference
+
+A Bio program consists of one or more s-expressions. An s-expression is recursively defined as being either
+
+1. an atom
+2. a list, which may contain lists and atoms
+
+An atom is either a 64-bit floating point number, or a symbol. A symbol is any sequence of utf8 code points that is not a valid number. Symbols serve as strings when the symbol is enclosed in double-quotes, such as `"This is a symbol"`. Bio does not have a separate string type; the term string is simply used to denote a symbol serving as a string.
+
+## Naming conventions
+
+* Predicates have a question mark suffix, such as `atom?`
+* Destructive actions have an exclamation point suffix, such as `set!`
+* Sentinels are prefixed with an ampersand, such as `&rest`
+* Symbols with special meaning are prefixed `#`, such as `#t`
+* Identifiers are kebab-case, while composite types and module variables are PascalCase
+* To logically group functions, infix dots are used, such as `io.read-number`
+
+## Intrinsics
+
+Intrinsics are functions, macros, and symbols implemented by the interpreter. They are building blocks for the standard library and user programs.
+
+### nil
+
+A symbol representing the absence of a value. Note that `nil` and `'()` are considered equal.
+
+### #t and #f
+
+Symbols representing true and false, respectively. Note that `nil` coerces to `#f`.
+
+### #?
+
+A symbol representing the last top-level expression evaluation.
+
+Example:
+
+```scheme
+(+ 2 3)
+(* 2 #?)
+10
+```
+
+### #! and #value
+
+The `#value` symbol contains the value returned by a *tried* expression. This usually removes the need to use a temporary variable when you need to both check for errors *and* use the result.
+
+The `#!` symbol contains the error after a `try` expression. If no error occurs, this is set to `nil`.
+
+```
+(try (math.safe-div (io.read-number) (io.read-number))
+    (print "The doubled result is: " (* 2 #value))
+    (print "Failed: " #!))
+```
+
+### typename 
+
+The 'typename' functions returns a string representation of the type. The most specific classification is returned, so `(typename #t)` is "bool", even though #t is also a symbol.
+
+```scheme
+(typename 'a)
+"symbol"
+
+(typename math.pi)
+"number"
+
+(typename #t)
+"bool"
+
+(typename '(a b c))
+"list"
+
+(typename +)
+"function"
+```
+
+### number? symbol? list? bool? callable?
+
+Predicates to determine expression types. There's also an `atom?` predicate in the standard library.
+
+These all return #t
+
+```scheme
+(number? -5.7)
+(number? x)
+(symbol? 'x)
+(symbol? #t)
+(bool? #t)
+(bool? #f)
+(list? '(abc))
+(callable? +)
+```
+
+### var and define
+
+'var' creates a variable binding in the *current* environment. The binding will fail if it already exists in the current environment. The `define` function is just an alias to `var`
+
+```scheme
+(var x 5)
+(define y 5)
+(var name (readline))
+(var double (lambda (val) (* 2 val)))
+```
+
+Local variables:
+
+```scheme
+(var x 2)
+(var y 2)
+(var z 2)
+(var some-function (lambda (x)
+
+    ; Allowed, y is not in the local scope
+    (var y 10)
+
+    ; Not allowed, x is a formal in the same scope
+    ; (var x 10)
+
+    (print x y z)
+))
+
+> (some-function 3)
+3 10 2
+```
+
+### set! and unset!
+
+Changes the value of an existing binding (values themselves are immutable). The binding is searched from current to root scope.
+
+```scheme
+; Define x, then update it
+(var x 5)
+(set! x 10)
+
+; Be evil and redefine + to mean -
+(set! + -)
+(+ 10 2)
+8
+
+; Remove binding, allowing it to be defined again
+(unset! x)
+(var x 'hey)
+```
+
+### arithmetic functions
+
+The arithmetic functions work on floating-point numbers. Unlike infix notation, any number of arguments can be given.
+
+```scheme
+(+ -3 5)
+2
+
+(/ 2 (* 10 (+ math.pi 2 3 (- 2 3))))
+0.028004957675577865
+
+; pi symbol is same as math.pi (tip: this is available with Option+P if you're on a mac)
+(define circumference (λ (x) (* 2 π x)))
+```
+
+Additional math functions are available in the standard library.
+
+### equality
+
+The `=` and `~=` functions check for exact and approximate equality. The approximate case is only for numeric operands and accepts a third argument to override the tolerance (epsilon is by default 1e-7)
+
+```scheme
+(= x 5)
+(= '(1 2 3 4) nums)
+(= '(1 3) (odd-items nums))
+(~= a b 0.0005)
+```
+
+Exact equality is implemented in terms of the `order` function, allowing nested lists to be compared.
+
+### order
+
+The `order` function returns 0, -1, 1 do indicate if the first argument is equal, less than or greater than the second argument. All expression types are supported.
+
+Lists are recursively compared. If list lengths differ, the shorter one is considered smaller. Empty lists and `nil` are considered equal, otherwise `nil` is always considered smaller.
+
+```scheme
+(order 100 200)
+-1
+
+(order 'def 'abc)
+1
+
+(order '(1 2 3) '(0 1 2))
+1
+
+(order '(1 2) '(0 1 2))
+-1
+
+(order 6 (* 2 3))
+0
+```
+
+Standard library functions such as `<` are implemented in terms of `order`.
+
+### env and gc
+
+`env` prints the current list of environments in creation order. By default, garbage collection is executed before printing to reduce noise. This can be turned off by passing no-gc, i.e `(env no-gc)`
+
+```
+> (env)
+Environment for global: Env@10db4b000
+    import = <function>, env *Env@0
+    exit = <function>, env *Env@0
+    gc = <function>, env *Env@0
+    #f = #f, env *Env@0
+    #t = #t, env *Env@0
+    #? = #t, env *Env@0
+    nil = nil, env *Env@0
+    ...
+
+> (gc)
+Garbage collected 161 items
+```
+
+The garbage collector runs periodically, though the criteria and extent are intentionally left undefined by this language reference.
+
+### lambda and λ
+
+The `lambda` function creates an anonymous function. Lambdas are usually bound to a variable, but can also be invoked directly or passed and returned as values.
+
+```scheme
+> (var square (lambda (x) (* x x)))
+> (square 5)
+25
+```
+
+Direct application without binding to a variable:
+
+```scheme
+> ((lambda (x) (* x x)) 5)
+25
+```
+
+The lambda symbol can be used in place of the lambda identifier
+
+```scheme
+(var doubler (λ (x) (* 2 x)))
+```
+
+A lambda invocation has its own environment, and the parent environment is the one that existed when the lambda was defined. In other words, Bio is lexically scoped.
+
+### macro
+
+This function creates a macro expression. Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so, usually using quasi quotation.
+
+When executed, the body is evaluated, usually producing a quasiquote expression (which serves as a code template). The last expression is then evaluated again as the result. This causes the quasiquote expansion to be evaluated as code:
+
+```scheme
+(var print-with-label (macro (label &rest values)
+	`(print label ": " ,@values)
+))
+
+(print-with-label Primes 2 3 5 7)
+
+Primes: 2 3 5 7
+```
+
+A macro invocation has its own environment, and the parent environment is the current one.
+
+### self and environment lookups
+
+The `self` function returns the current environment as an expression. This can then be used as a function to perform lookups in that environment. This enables composite data types with their own functions, as well as modules. The distinction is purely conceptual.
+
+A top-level `(self)` call will return the root environment as an expression:
+
+```scheme
+> (self)
+<env>
+
+> ((self) +)
+<function>
+
+> ((self) (+ 1 2))
+3
+
+> (((self) +) 1 2)
+3
+```
+
+As you can see, when an environment is placed in the first position of a list, it changes which environment the following argument is looked up in.
+
+Use cases of `self` include modules, composite data types, polymorphic behavior, and enabling duck-typed interfaces/protocols.
+
+See [Modules](#modules) for more information and an example.
+
+### &rest
+
+A sentinel symbol causing the rest of the arguments to be delivered as a single list argument. This enables variadic functions and macros.
+
+### quote
+
+The `quote` function and the `'` shorthand returns the argument unevaluated.
+
+```scheme
+> (quote a)
+a
+
+> 'a
+a
+
+> '(a b 1 2)
+(a b 1 2)
+
+```
+
+### quasiquote
+
+The `quasiquote` function and the \` shorthand returns the argument unevaluated. Unlike `quote`, however, it allows arguments to be selectively evaluated using `unquote` and `unquote-splicing`
+
+```scheme
+; Evaluate one of the list items
+> (quasiquote (1 2 (unquote (+ 1 2)) 4))
+(1 2 3 4)
+
+; Same thing using shorthand notation
+> `(1 2 ,(+ 1 2) 4)
+(1 2 3 4)
+
+; Use unquote-splicing to make a larger list of primes:
+> (var primes '(2 3 5 7 11 13))
+> `(,@primes 17 19 23)
+(2 3 5 7 11 13 17 19 23)
+```
+
+Quasi quotation is commonly used to make templates in macros, but it has uses in regular functions as well.
+
+### unquote
+In the context of a quasiquote, evaluate the argument. The shorthand version is `,` 
+
+### unquote-splicing
+In the context of a quasiquote, evaluate the elements of the list and place the result in the enclosing list. The shorthand version is `,@`
+
+### eval
+
+Evaluates all arguments, leaving the last evaluation as the result. If quote and quasiquote expressions are encountered, these are unquoted before evaluation.
+
+```scheme
+(eval '(+ 1 2))
+3
+
+(var expr '(* 2 3))
+```
+
+### apply
+
+Evaluates the given function with the given argument list. The last argument must be a list argument. Any preceding arguments are prepended to that list. This means that `(apply + 1 '(2 3))` is equivalent to `(apply + '(1 2 3))`. 
+
+```scheme
+> (apply + 5 2 1 '(10 20))
+38
+
+> (var list-of-numbers '(1 2 3 4))
+> (apply * list-of-numbers)
+24
+
+> +
+<function>
+
+> (apply #? '(5 2))
+7
+```
+
+Using `apply` is mostly useful when arguments are given as a list and the function at hand expects arguments to be passed individually.
+
+### gensym
+
+Generates a unique symbol.
+
+```scheme
+> (gensym)
+gensym_1
+
+> (gensym)
+gensym_2
+```
+
+### if
+
+The `if` expression evaluates the first argument. If true, then the second argument is evaluated, otherwise the third (optional) argument is evaluated. Each branch can have multiple expressions using constructs such as `begin` or `let`.
+
+```scheme
+(if (< x 10) 'Yes 'No)
+
+(var res (if (math.odd? x) 'Odd 'Even))
+```
+
+Here's a list of if expressions from `examples/fizzbuzz-if.lisp`, none of which have an else branch:
+
+```scheme
+(if (= 0 x) (print "Fizz"))
+(if (= 0 y) (print "Buzz"))
+(if (and (!= 0 x) (!= 0 y)) (print i))
+```
+
+### cond
+
+The `cond` expression is useful when if/else conditions lead to deep nesting. It takes a variable number of predicate/body pairs, and ends with an else clause. The else clause is *required* and consists only of the body. It must be the last entry in the cond expression.
+
+Here's the cond expression from `examples/fizzbuzz-cond.lisp`:
+
+```scheme
+(cond
+    ((and (= 0 x) (= 0 y)) (print "FizzBuzz" "\n"))
+    ((= 0 x) (print "Fizz" "\n"))
+    ((= 0 y) (print "Buzz" "\n"))
+    ((print i "\n"))
+)
+```
+
+### begin
+
+Evaluates a list of expressions and returns the last one as the result. This is useful when more than one expression needs to be evaluated, like in the branches of the `if` function:
+
+```scheme
+(if (< i 10)
+    (begin
+        (var x 5)
+        (set! x (+ x 1))
+        (print (* x 2))
+    )
+)
+
+12
+```
+
+### try
+
+The `try` function evaluates the first argument. If the result is not an error expression, then the second argument is evaluated (the success branch), otherwise the third argument is evaluated (the error branch). The error branch is optional (in which case `nil` will be returned; add an error branch if you want to propagate the error.)
+
+
+It's often necessary to know the value of the tried expression if it succeeds. This can be done using an intermediary variable, or by looking up the `#value` symbol:
+
+```scheme
+(try (math.safe-div 6 2)
+    (if (= #value 3)
+        (print "As expected!\n")
+    )
+)
+```
+
+The error expression is available through the `#!` symbol, used here by the error branch:
+
+```scheme
+(try (math.safe-div 6 2)
+    (if (= #value 3)
+        (print "As expected!\n")
+    )
+    (print "Could not divide: " #!)
+)
+```
+
+A function that may fail does not have to be used in a try function:
+
+```scheme
+> (var res (math.safe-div x y))
+3.5
+
+> (math.safe-div x 0)
+Division by zero
+```
+
+You can also use `try` after the fact:
+
+```scheme
+> (var res (math.safe-div x 0))
+> (try (math.safe-div 1 0) #t `(string "Not good: " ,#!))
+Not good: Division by zero
+```
+
+### error
+
+The `error` function creates a new error expression.
+
+```scheme
+(var fail-if-ten (lambda (x)
+    (if (= x 10)
+        (error "10 is not allowed")
+        #t
+    )
+))
+
+(try (fail-if-ten 10)
+    "All good"
+    (begin
+        (print "Something went terribly wrong!\n")
+        #!
+    )
+)
+
+Something went terribly wrong!
+10 is not allowed
+```
+
+Notice how the `try` expression propagates the error by putting `#!` as the last expression in the error case.
+
+Errors don't have to be symbols, any expression will do.
+
+### print and readline
+
+`print` prints one or more expressions separated by a space. Combine `print` with `string` if you need to print verbatim (without spaces between expressions)
+
+`readline` reads from stdin until newline or EOF is observed.
+
+```scheme
+(print "What's your name?")
+(var name (readline))
+
+(print "What's your age?")
+(var age (as number (readline)))
+
+(print "Hi" name (if (> age 80) "... you're quite old" ""))
+```
+
+IO examples work best if you put them in a file and then use `(import "thename.lisp")` or `bio run thename.lisp`
+
+See also the `io.` functions in the standard library.
+
+### as
+
+The `as` function converts an expression from one type to another. If a conversion is not supported, `nil` is returned.
+
+The target conversion is either `number`, `symbol`, or `list`.
+
+```scheme
+(var age (as number (readline)))
+(assert (= '(5) (as list 5)))
+(as symbol mynumber)
+(set! age (as symbol age))
+```
+
+### list
+
+Creates a new list from its arguments. Quoting can be used to create lists without evaluating the expressions.
+
+```scheme
+> (var x 3)
+> (list 1 2 x)
+(1 2 3)
+
+> '(1 2 x)
+(1 2 x)
+```
+### append
+
+Creates a new list from its arguments. List arguments are spliced into the new list.
+
+```scheme
+> (append '(a b c) '(d e f (g h)))
+(a b c d e f (g h))
+
+> (append 'a 'b 1 2 (+ 1 2))
+(a b 1 2 3)
+```
+
+### range
+
+The `range` function is the building block for querying lists, and is used to build standard library functions such as `car` and `cdr`.
+
+* If called with no arguments, the first expression in a list is returned.
+* If called with one argument, a list containing the sublist from `start` to end-of-list is returned.
+* If called with two arguments, a list containing the sublist from `start` to `end` (exclusive) is returned.
+
+Negative indices are end-of-list relative. `nil` is returned if any indices are out of range.
+
+```scheme
+> (var letters '(a b c d e))
+(a b c d e)
+
+> (range letters)
+a
+
+> (range letters -1)
+(e)
+
+> (range (range letters -1))
+e
+
+> (range letters 2)
+(c d e)
+
+> (range letters 2 4)
+(c d)
+
+> (range letters -4 -2)
+(c d)
+
+```
+
+### len
+
+The length of a list (in item count) or symbol (in bytes)
+
+```scheme
+> (len '(1 2 3))
+3
+```
+
+### string
+
+Creates a symbol by concatenating the *rendering* of its arguments.
+
+```scheme
+> (var message (string "The value is " x))
+The value is 5
+
+> (string "An error occurred : " #!)
+An error occurred : Division by zero
+```
+
+### import
+
+Reads and evaluates the given file. The path can be relative or absolute.
+
+```scheme
+(import "examples/albums.lisp")
+```
+
+### assert
+
+Checks if the expression evaluates to #t. If not, an error is printed and the process is terminated. Evaluates to #t if successful.
+
+```scheme
+(assert (= '(a b c 1 2 3) mylist))
+```
+
+### exit
+
+Exits the process with an optional exit code (default is 0)
+
+```scheme
+(exit 1)
+```
+
+### verbose
+
+Toggles the verbosity flag. When on, some details are printed during evaluation, such as `nil` results and quasiquote expansions.
+
+### math.pi and math.e
+
+The values of π and Euler's number respectively. Note that the `math.` prefix is just a naming convention.
+
+### math.floor
+
+Returns the largest integer less than or equal to the argument.
+
+```scheme
+(floor math.pi)
+3
+```
+
+## Standard library
+
+The standard library is a file called `std.lisp` that's loaded and evaluated when the interpreter starts.
+
+### car, cdr, caar, cadr, cddr, caddr, last, nth
+
+These functions treat a list as pairs in the classical Lisp sense. `car` returns the first list item, while `cdr` returns the rest of the list. `last` returns the last list item.
+
+```scheme
+(var nums '(1 2 3 4))
+(assert (= 1 (car nums)))
+(assert (= 2 (cadr nums)))
+(assert (= 3 (caddr nums)))
+(assert (= 4 (last nums)))
+(assert (= 3 (nth 2 nums)))
+(assert (nil? (nth 100 nums)))
+
+```
+
+### cons
+
+Prepends an item to a list:
+
+```scheme
+> (cons 'a '(b c))
+(a b c)
+
+
+```
+
+### nil?
+
+True if the argument is `nil` or an empty list.
+
+### atom?
+
+True if the argument is a number or a symbol (in other words, not a list)
+
+### bool?
+
+True if the argument is `#t` or `#f`
+
+### relational functions
+
+The relation functions are `<=`, `<`, `>`, `>=`, `!=` in addition to the intrinsic `=`
+
+### logical functions
+
+The `and` and `or` macros perform the usual shortcut evaluation. The `not` function checks if the argument is false. If so, the result is then `#t`, otherwise it's `#f`
+
+### let macro
+
+Local bindings can be created with a `lambda` expression. If the only reason to create a lambda is to have local variables, then the `let` macro is more convenient.
+
+```scheme
+(var x 10)
+(var y 20)
+
+(let ((x 5) (y 6))
+    (+ x y)
+)
+
+11
+```
+
+### filter
+
+Filters a list.
+
+```scheme
+> (filter (lambda (x) (< x 5)) '(3 9 5 8 2 4 7))
+(3 2 4)
+```
+
+### map
+
+Applies a function over one or more lists.
+
+```scheme
+; Create a list of sums taking operands from three lists
+> (map + '(0 2 5) '(1 2 3) '(1 2 3))
+(2 6 11)
+
+; Double every element in a list
+> (map (λ (x) (* 2 x)) '(1 2 3))
+(2 4 6)
+
+; A list of pairs with the order reversed
+> (map (λ (x y) (list y x)) '(a b c) '(1 2 3))
+((1 a) (2 b) (3 c))
+```
+
+### quicksort
+
+Sorts a list using the supplied comparator function. The following example sorts the same list in ascending and descending order by passing `<` and `>` as the comparator functions. In the ascending example, we also filter out negative numbers:
+
+```scheme
+> (filter 
+    (quicksort '(5 40 1 -3 2) <) 
+    (λ (x) (>= x 0)))
+(1 2 5 40)
+
+> (quicksort '(5 40 1 -3 2) >)
+(40 5 2 1 -3)
+
+```
+
+You can also pass a lambda to do your own ordering. See the **albums** example file for an example of doing this to sort albums.
+
+### while macro
+
+Expands to a tail-recursive function running a body while the predicate holds:
+
+```scheme
+(while (< c 10000000)
+    (print "Value is now " c "\n")
+    (inc! c)
+)
+```
+
+### each
+
+The `each` function allows for convenient iteration of lists. The first argument is a list. The second argument is a function that's called for every item in the list, with the item as an argument.
+
+```scheme
+; Print all numbers
+(each lots-of-numbers print)
+
+; Create a new list of numbers, with double the values
+(var result '())
+(each nums (lambda (item)
+    (set! result (append result (* 2 item)))
+))
+
+(2 4 6 8 10 12)
+```
+
+### io.read-number and io.read-string
+
+Read number and string expressions from stdin.
+
+### typename
+
+Returns the type name of its argument
+
+```scheme
+>(define x 5)
+>(typename x)
+number
+
+>(typename 'x)
+symbol
+```
+
+### time.now
+
+Returns the current time in milliseconds since unix epoch:
+
+```scheme
+>(time.now)
+1618413357184
+```
+
+### double-quote
+
+Renders the argument and wraps the result in double-quotes.
+
+```scheme
+> (double-quote name)
+"Joanna"
+
+> (double-quote 5)
+"5"
+
+> (double-quote (+ 2 3))
+"5"
+```
+
+### inc! and dec!
+
+Increments and decrements
+
+### file i/o
+
+A file is opened with `io.open-file`, which takes a relative or absolute path name as an argument. The file is then closed with `io.close-file`. Currently, line oriented reading and writing is supported.
+
+```scheme
+(var report (io.open-file "report.csv"))
+(io.read-line report)
+(io.write-line report "a new line is appended")
+(io.close-file report)
+```
+
+`io.read-line` returns the *error* expression "EOF" if end of the file is reached.
+
+### math.odd? math.even? odd-items and even-items
+
+`math.odd?` and `math.even?` determine if a number is odd or even, respectively.
+
+`odd-items` and `even-items` create a list with odd- and even indexed items respectively. These functions are 1 based.
+
+```scheme
+>(math.odd? 5)
+#t
+
+> (odd-items '(a b c d e f g))
+(a c e g)
+```
+
+### math.abs
+
+Returns the absolute value of the argument.
+
+```scheme
+(math.abs -17)
+17
+```
+
+### math.pow
+
+Calculates `x^y`:
+
+```scheme
+>(math.pow 2 32)
+4294967296
+```
+
+### math.average
+
+The average of a list of numbers
+
+### math.sqrt
+
+Calculate the square root using Newton's method
+
+```scheme
+>(math.sqrt 986)
+31.40063693621559
+```
+
+### math.safe-div
+
+Divides the first argument by the second. If the divisor is zero, the result is an error.
+
+```scheme
+(try (safe-div 6 2)
+    (if (= #value 3)
+        (print "As expected!\n")
+    )
+)
+```
+
+### math.make-random-generator and math.random-list
+
+Given a seed, `math.make-random-generator` creates a linear congruent random number generator.
+
+Example using current Unix epoch as seed:
+
+```scheme
+>(var rng (math.make-random-generator 0))
+
+>(rng)
+362807296
+
+>(rng)
+1965043776
+```
+
+Given a random number generator, `math.random-list` generates a list of `n` random numbers:
+
+```scheme
+>(var rng (math.make-random-generator 0))
+
+>(math.random-list rng 10)
+(1055406848 752570112 91411200 3016512 1968096889 765038592 339902464 1666232384 1888402176 197119744)
+```
+
+### math.fib and math.fact
+
+Recursive Fibonacci and factorial functions (note: as Bio doesn't support arbitrary precision numbers yet, it can only handle relatively small inputs)
+
+### Y
+
+The Y fixpoint combinator (technically, the Z combinator as Bio is applicative)
+
+```scheme
+> (var ! (Y (lambda (r) (lambda (x) (if (< x 2) 1 (* x (r (- x 1))))))))
+> (! 5)
+
+120
+```
+
+## Modules
+A Bio module is a module *by convention*, somewhat similar to classical Javascript modules:
+
+1. A `mod-<modulename>.lisp` file with the contents wrapped in a lambda call
+2. The last expression is `(self)`, making the environment available to the importer
+3. The following definitions are available:
+    - module-name, a string describing the module
+    - module-version, a list of numbers signifying major, major, and patch
+    - module-description, an *optional* description of the module
+
+### Module example
+
+Below is `mod-point.lisp`, which in this example is placed in a subdirectory called `modules`
+
+```scheme
+((lambda ()
+    ; Functions shared between types are actually macros so their parent 
+    ; environment is the calling environment; this way x and y will be found
+    (var generic-update (macro (new-x new-y)
+        (set! x new-x)
+        (set! y new-y)
+        nil
+    ))
+
+    ; A point datatype with regular formatting
+    (var new-point (lambda (x y)
+        (var update generic-update)
+        (var as-string (lambda ()
+            (string x " " y)
+        ))
+        (self)
+    ))
+
+    ; A version with longitude and latitude formatting
+    (var new-location (lambda (x y)
+        (var update generic-update)
+        (var as-string (lambda ()
+            (string 
+                (math.abs x) (if (< x 0) "° S" "° N")
+                "  "
+                (math.abs y) (if (< y 0) "° W" "° E"))
+        ))
+        (self)
+    ))
+
+    (var module-name "Position Module")
+    (var module-version '(1 0 0))
+    (self)
+))
+
+
+```
+
+To use the module:
+
+```scheme
+(var Point (import "modules/mod-point.lisp"))
+
+(var pt (Point new-location 24.5 69.2))
+
+(pt x)
+24.5
+
+((pt as-string))
+24.5 °N  69.2 °E
+
+; Call update in two different ways
+((pt update) 25.4 70.5)
+(pt (update 25.4 70.5))
+
+```

@@ -1,0 +1,13 @@
+(var fizzbuzz (lambda (i n)
+    (if (<= i n)
+        (let ((x (math.mod i 3)) (y (math.mod i 5)))
+            (if (= 0 x) (print "Fizz"))
+            (if (= 0 y) (print "Buzz"))
+            (if (and (!= 0 x) (!= 0 y)) (print i))
+            (print "\n")
+            (fizzbuzz (+ i 1) n)
+        )
+    )
+))
+
+(fizzbuzz 1 20)
