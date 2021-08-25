@@ -46,14 +46,14 @@ pub const GC = struct {
         self.registered_expr.deinit();
         interned_intrinsics.deinit(allocator);
 
-        for (interned_syms.items()) |entry| {
-            allocator.free(entry.key);
+        for (interned_syms.keys()) |key| {
+            allocator.free(key);
         }
         interned_syms.deinit(allocator);
 
         var it = interned_nums.iterator();
         while (it.next()) |entry| {
-            allocator.destroy(entry.value);
+            allocator.destroy(entry.value_ptr.*);
         }
         interned_nums.deinit(allocator);
     }
@@ -69,9 +69,10 @@ pub const GC = struct {
 
         // Start marking reachable objects
         for (self.registered_envs.items) |e| {
-            for (e.map.items()) |entry| {
-                try self.mark(entry.key, &marked);
-                try self.mark(entry.value, &marked);
+            var iter = e.map.iterator();
+            while (iter.next()) |entry| {
+                try self.mark(entry.key_ptr.*, &marked);
+                try self.mark(entry.value_ptr.*, &marked);
             }
         }
 
@@ -83,10 +84,10 @@ pub const GC = struct {
     fn markEnvironment(self: *GC, env: *Env, marked: *std.AutoArrayHashMap(*Env, void)) anyerror!void {
         if (!marked.contains(env)) {
             try marked.put(env, {});
-            for (env.map.items()) |env_entry| {
-                if (env_entry.value.val == ExprType.env) {
-                    try self.markEnvironment(env_entry.value.val.env, marked);
-                } else if (env_entry.value.env) |actual_env| {
+            for (env.map.values()) |env_entry_value| {
+                if (env_entry_value.val == ExprType.env) {
+                    try self.markEnvironment(env_entry_value.val.env, marked);
+                } else if (env_entry_value.env) |actual_env| {
                     try self.markEnvironment(actual_env, marked);
                 }
             }
