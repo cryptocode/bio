@@ -98,17 +98,17 @@ pub const Expr = struct {
 /// Environment for variable bindings. Instances are named to get friendly debugging output.
 pub const Env = struct {
     const hash_util = struct {
-        fn hash(key: *Expr) u32 {
+        pub fn hash(_: hash_util, key: *Expr) u32 {
             std.debug.assert(key.val == ExprType.sym);
             return @truncate(u32, std.hash.Wyhash.hash(0, key.val.sym));
         }
-        fn eql(first: *Expr, second: *Expr) bool {
+        pub fn eql(_: hash_util, first: *Expr, second: *Expr) bool {
             std.debug.assert(first.val == ExprType.sym and second.val == ExprType.sym);
             return std.mem.eql(u8, first.val.sym, second.val.sym);
         }
     };
 
-    map: std.ArrayHashMap(*Expr, *Expr, hash_util.hash, hash_util.eql, true),
+    map: std.ArrayHashMap(*Expr, *Expr, hash_util, true),
     parent: ?*Env = null,
     name: []const u8,
 
@@ -142,7 +142,7 @@ pub const Env = struct {
     /// Recursively search for the binding, replace it if found.
     /// If the new value is null, the binding is removed instead.
     pub fn replace(self: *Env, var_name: *Expr, val: ?*Expr) *Expr {
-        if (self.map.get(var_name)) {
+        if (self.map.get(var_name)) |_| {
             if (val) |value| {
                 self.putWithSymbol(var_name, value) catch return &expr_atom_nil;
                 return value;
@@ -186,7 +186,7 @@ fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*E
     };
 
     // Lazy initialization of the interned intrinsics map
-    if (interned_intrinsics.items().len == 0) {
+    if (interned_intrinsics.count() == 0) {
         for (intrinsic_atoms) |atom| {
             try interned_intrinsics.put(allocator, atom.val.sym, atom);
         }
@@ -233,7 +233,7 @@ pub fn makeAtomLiteral(literal: []const u8, take_ownership: bool) anyerror!*Expr
             if (take_ownership) {
                 allocator.free(literal);
             }
-            break :sym_blk entry.key;
+            break :sym_blk entry.key_ptr.*;
         } else {
             const res = if (take_ownership) literal else try allocator.dupe(u8, literal);
             try interned_syms.put(allocator, res, {});

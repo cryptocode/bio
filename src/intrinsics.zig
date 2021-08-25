@@ -141,7 +141,7 @@ pub fn stdFileClose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
 }
 
 /// Reads a line from the file
-pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
@@ -152,7 +152,7 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
         } else {
             return try makeError(try makeAtomByDuplicating("EOF"));
         }
-    } else {
+    } else |_| {
         return try makeError(try makeAtomByDuplicating("Could not read from file"));
     }
 }
@@ -217,12 +217,17 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     }
 }
 
-pub fn stdRunGc(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = ev;
+    _ = env;
+    _ = args;
     try gc.run(true);
     return &expr_atom_nil;
 }
 
-pub fn stdVerbose(ev: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdVerbose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = env;
+    _ = args;
     ev.verbose = !ev.verbose;
     const bool_str = if (ev.verbose) "on " else "off";
     try std.io.getStdOut().writer().print("Verbosity is now {s}\n", .{bool_str});
@@ -240,7 +245,9 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 
 /// Renders the expression as a string and returns an owned slice.
 /// For now, only newline escapes are done (this should be extended to handle all of them)
-fn render(_: *Interpreter, _: *Env, expr: *Expr) ![]u8 {
+fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
+    _ = ev;
+    _ = env;
     const str = try expr.toStringAlloc();
     defer allocator.free(str);
     return try std.mem.replaceOwned(u8, allocator, str, "\\n", "\n");
@@ -276,7 +283,10 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 }
 
 /// Implements (readline)
-pub fn stdReadline(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = ev;
+    _ = env;
+    _ = args;
     if (try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', std.math.maxInt(u32))) |line| {
         return try makeAtomAndTakeOwnership(line);
     }
@@ -285,7 +295,9 @@ pub fn stdReadline(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
 
 /// Returns the current environment as an expression, allowing the user to make constructs
 /// such as modules and object instances.
-pub fn stdSelf(_: *Interpreter, env: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = ev;
+    _ = args;
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .env = env };
     return expr;
@@ -301,12 +313,13 @@ pub fn stdEnv(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     for (gc.registered_envs.items) |registered_env| {
         try std.io.getStdOut().writer().print("Environment for {s}: {*}\n", .{ registered_env.name, registered_env });
 
-        for (registered_env.map.items()) |item| {
+        var iter = registered_env.map.iterator();
+        while (iter.next()) |item| {
             try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
-            try std.io.getStdOut().writer().print("{s} = ", .{item.key.val.sym});
-            try item.value.print();
+            try std.io.getStdOut().writer().print("{s} = ", .{item.key_ptr.*.val.sym});
+            try item.value_ptr.*.print();
             if (ev.verbose) {
-                try std.io.getStdOut().writer().print(", env {*}", .{item.value.env});
+                try std.io.getStdOut().writer().print(", env {*}", .{item.value_ptr.*.env});
             }
             try std.io.getStdOut().writer().print("\n", .{});
         }
@@ -490,19 +503,25 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 
 /// Returns the first argument unevaluated. Multiple arguments is an error,
 /// though the argument may be a list. (quote (1 2 3)) -> '(1 2 3)
-pub fn stdQuote(_: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = ev;
+    _ = env;
     try requireExactArgCount(1, args);
     return args[0];
 }
 
 /// Unquote is only useful in combination with quasiquoting, see stdQuasiQuote
-pub fn stdUnquote(ev: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdUnquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = env;
+    _ = args;
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
 
 /// Unquote with splicing is only useful in combination with quasiquoting, see stdQuasiQuote
-pub fn stdUnquoteSplicing(ev: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = env;
+    _ = args;
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote-splicing inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
@@ -680,7 +699,10 @@ pub fn stdPow(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     return makeNumExpr(std.math.pow(f64, args[0].val.num, args[1].val.num));
 }
 
-pub fn stdTimeNow(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
+pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = ev;
+    _ = env;
+    _ = args;
     return makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
 }
 

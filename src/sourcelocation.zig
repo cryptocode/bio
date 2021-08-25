@@ -20,7 +20,7 @@ pub const SourceLocation = struct {
             loc.file = try allocator.dupe(u8, file);
             try files.put(loc.file, {});
         } else {
-            loc.file = files.getEntry(file).?.key;
+            loc.file = files.getEntry(file).?.key_ptr.*;
         }
     }
 
@@ -40,7 +40,7 @@ pub const SourceLocation = struct {
         }
         var it = files.iterator();
         while (it.next()) |file| {
-            allocator.free(file.key);
+            allocator.free(file.key_ptr.*);
         }
         files.deinit();
         stack.deinit();
