@@ -1,1 +1,3 @@
 zig-*
+.zigmod
+deps.zig
