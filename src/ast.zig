@@ -142,7 +142,7 @@ pub const Env = struct {
     /// Recursively search for the binding, replace it if found.
     /// If the new value is null, the binding is removed instead.
     pub fn replace(self: *Env, var_name: *Expr, val: ?*Expr) *Expr {
-        if (self.map.get(var_name)) |current| {
+        if (self.map.get(var_name)) {
             if (val) |value| {
                 self.putWithSymbol(var_name, value) catch return &expr_atom_nil;
                 return value;

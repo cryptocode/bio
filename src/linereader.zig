@@ -35,7 +35,7 @@ const Linenoise = struct {
     }
 
     /// Add the given entry to the REPL history
-    pub fn addToHistory(self: *Linenoise, entry: []const u8) !void {
+    pub fn addToHistory(_: *Linenoise, entry: []const u8) !void {
         if (!is_windows and entry.len > 0) {
             const mem = try allocator.dupeZ(u8, entry);
             defer allocator.free(mem);

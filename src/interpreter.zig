@@ -83,7 +83,7 @@ pub const Interpreter = struct {
     }
 
     /// Perform a full GC sweep and check for leaks
-    pub fn deinit(self: *Interpreter) void {
+    pub fn deinit(_: *Interpreter) void {
         gc.deinit();
         SourceLocation.deinitStack();
         if (!std.builtin.is_test and gpa.deinit()) {
@@ -92,7 +92,7 @@ pub const Interpreter = struct {
     }
 
     /// Print user friendly errors
-    pub fn printError(self: *Interpreter, err: anyerror) !void {
+    pub fn printError(_: *Interpreter, err: anyerror) !void {
         const err_str = switch (err) {
             ExprErrors.AlreadyReported => return,
             ExprErrors.InvalidArgumentCount => "Invalid argument count",
@@ -182,7 +182,7 @@ pub const Interpreter = struct {
                             return ExprErrors.AlreadyReported;
                         }
 
-                        for (args_slice) |branch, index| {
+                        for (args_slice) |branch| {
                             if (branch == else_branch) {
                                 maybe_next = branch.val.lst.items[0];
                                 continue :tailcall_optimization_loop;

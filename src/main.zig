@@ -26,7 +26,7 @@ pub fn main() !void {
             if (std.mem.eql(u8, process_args[1], "run") and process_args.len > 2) {
                 const load_expr = try std.fmt.allocPrint(allocator, "(import \"{s}\")", .{process_args[2]});
                 defer allocator.free(load_expr);
-                var res = try interpreter.eval(interpreter.env, try interpreter.parse(load_expr));
+                _ = try interpreter.eval(interpreter.env, try interpreter.parse(load_expr));
                 return;
             }
         }
@@ -42,7 +42,7 @@ pub fn main() !void {
 test "Evaluate standard library and test.lisp" {
     var interpreter = try Interpreter.init();
     defer interpreter.deinit();
-    var res = try interpreter.eval(interpreter.env, try interpreter.parse("(begin (import \"std.lisp\") (import \"test.lisp\"))"));
+    _ = try interpreter.eval(interpreter.env, try interpreter.parse("(begin (import \"std.lisp\") (import \"test.lisp\"))"));
     std.testing.expectEqual(interpreter.exit_code, null);
 }
 

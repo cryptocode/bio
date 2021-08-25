@@ -96,7 +96,7 @@ pub fn requireType(ev: *Interpreter, expr: *Expr, etype: ExprType) !void {
 /// Signals the interpreter to terminate with an exit code. We don't simply terminate
 /// the process here, as we're running with leak detection, but rather sets and exit code
 /// which causes the eval loop to exit. This helps stress testing the GC/cleanup logic.
-pub fn stdExit(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdExit(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     var exit_code: u8 = 0;
     if (args.len > 0 and args[0].val == ExprType.num) {
         exit_code = @floatToInt(u8, args[0].val.num);
@@ -113,7 +113,6 @@ pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        var out: [std.fs.MAX_PATH_BYTES]u8 = undefined;
         var path = try std.fs.path.resolve(allocator, &.{filename_expr.val.sym});
         defer allocator.free(path);
 
@@ -153,7 +152,7 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
         } else {
             return try makeError(try makeAtomByDuplicating("EOF"));
         }
-    } else |err| {
+    } else {
         return try makeError(try makeAtomByDuplicating("Could not read from file"));
     }
 }
@@ -218,12 +217,12 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     }
 }
 
-pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdRunGc(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
     try gc.run(true);
     return &expr_atom_nil;
 }
 
-pub fn stdVerbose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdVerbose(ev: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
     ev.verbose = !ev.verbose;
     const bool_str = if (ev.verbose) "on " else "off";
     try std.io.getStdOut().writer().print("Verbosity is now {s}\n", .{bool_str});
@@ -241,7 +240,7 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 
 /// Renders the expression as a string and returns an owned slice.
 /// For now, only newline escapes are done (this should be extended to handle all of them)
-fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
+fn render(_: *Interpreter, _: *Env, expr: *Expr) ![]u8 {
     const str = try expr.toStringAlloc();
     defer allocator.free(str);
     return try std.mem.replaceOwned(u8, allocator, str, "\\n", "\n");
@@ -253,7 +252,7 @@ pub fn stdString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     defer builder.deinit();
     const writer = builder.writer();
 
-    for (args) |expr, index| {
+    for (args) |expr| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
         defer allocator.free(rendered);
@@ -277,7 +276,7 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 }
 
 /// Implements (readline)
-pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdReadline(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
     if (try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', std.math.maxInt(u32))) |line| {
         return try makeAtomAndTakeOwnership(line);
     }
@@ -286,14 +285,14 @@ pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
 
 /// Returns the current environment as an expression, allowing the user to make constructs
 /// such as modules and object instances.
-pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdSelf(_: *Interpreter, env: *Env, _: []const *Expr) anyerror!*Expr {
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .env = env };
     return expr;
 }
 
 /// Print environments. Runs the GC to minimize the environment listing, unless no-gc is passed.
-pub fn stdEnv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdEnv(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     if (!(args.len > 0 and args[0].val == ExprType.sym and std.mem.eql(u8, args[0].val.sym, "no-gc"))) {
         try gc.run(false);
     }
@@ -417,7 +416,7 @@ fn boolExpr(val: bool) *Expr {
 
 /// Check for equality. If the order operation fails, such as incompatiable types, false is returned.
 pub fn stdEq(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    return boolExpr((order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) }) catch |_| return &expr_atom_false) == std.math.Order.eq);
+    return boolExpr((order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) }) catch return &expr_atom_false) == std.math.Order.eq);
 }
 
 /// Compare floats with a small relative epsilon comparison. An optional third argument overrides the tolerance.
@@ -470,7 +469,7 @@ pub fn stdIsCallable(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 }
 
 /// (gensym) will generate a unique identifier
-pub fn stdGenSym(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdGenSym(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(0, args);
     ev.gensym_seq += 1;
     const sym = try std.fmt.allocPrint(allocator, "gensym_{d}", .{ev.gensym_seq});
@@ -491,19 +490,19 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 
 /// Returns the first argument unevaluated. Multiple arguments is an error,
 /// though the argument may be a list. (quote (1 2 3)) -> '(1 2 3)
-pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdQuote(_: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     return args[0];
 }
 
 /// Unquote is only useful in combination with quasiquoting, see stdQuasiQuote
-pub fn stdUnquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdUnquote(ev: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
 
 /// Unquote with splicing is only useful in combination with quasiquoting, see stdQuasiQuote
-pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdUnquoteSplicing(ev: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote-splicing inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
@@ -518,7 +517,7 @@ pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
         fn expand(ev_inner: *Interpreter, env_inner: *Env, expr: *Expr) anyerror!*Expr {
             if (expr.val == ExprType.lst) {
                 var result_list = try makeListExpr(null);
-                for (expr.val.lst.items) |item, index| {
+                for (expr.val.lst.items) |item| {
                     // May encounter empty lists, such as lambda ()
                     if (item.val == ExprType.lst and item.val.lst.items.len > 0) {
                         if (item.val.lst.items[0] == &expr_atom_unquote) {
@@ -674,14 +673,14 @@ pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return makeNumExpr(res);
 }
 
-pub fn stdPow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdPow(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     try requireType(ev, args[0], ExprType.num);
     try requireType(ev, args[1], ExprType.num);
     return makeNumExpr(std.math.pow(f64, args[0].val.num, args[1].val.num));
 }
 
-pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdTimeNow(_: *Interpreter, _: *Env, _: []const *Expr) anyerror!*Expr {
     return makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
 }
 
@@ -767,7 +766,7 @@ pub fn stdLambda(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
 /// This is called when a macro is defined
 /// The first argument must be a list, namely the macro arguments
-pub fn stdMacro(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdMacro(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     try requireType(ev, args[0], ExprType.lst);
 
