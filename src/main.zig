@@ -13,7 +13,14 @@ pub fn main() !void {
     {
         var args = std.ArrayList(*Expr).init(allocator);
         defer args.deinit();
-        var stdlib = try makeListExpr(&.{ &expr_atom_quote, try makeAtomByDuplicating("std.lisp") });
+        
+        // Use path of bio binary for standard library path
+        const pwd = try std.fs.selfExeDirPathAlloc(allocator);
+        defer allocator.free(pwd);
+        const stdpath = try std.fs.path.join(allocator, &[_][]const u8{ pwd, "std.lisp" });
+        defer allocator.free(stdpath);
+        
+        var stdlib = try makeListExpr(&.{ &expr_atom_quote, try makeAtomByDuplicating(stdpath) });
         try args.append(stdlib);
         _ = try stdImport(&interpreter, interpreter.env, args.items);
     }
