@@ -12,6 +12,7 @@ pub fn build(b: *std.build.Builder) void {
     }
     exe.setTarget(target);
     exe.setBuildMode(mode);
+    exe.setOutputDir(".");
     exe.install();
 
     const run_cmd = exe.run();
