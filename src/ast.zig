@@ -1,8 +1,9 @@
 const std = @import("std");
-usingnamespace @import("interpreter.zig");
-usingnamespace @import("intrinsics.zig");
-usingnamespace @import("gc.zig");
-usingnamespace @import("sourcelocation.zig");
+const interpreter = @import("interpreter.zig");
+const intrinsics = @import("intrinsics.zig");
+const mem = @import("gc.zig");
+const sourcelocation = @import("sourcelocation.zig");
+const SourceLocation = sourcelocation.SourceLocation;
 
 pub const ExprErrors = error{ AlreadyReported, UnexpectedRightParen, ExpectedNumber, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof };
 pub const ExprType = enum { sym, num, lst, lam, mac, fun, env, err, any };
@@ -12,7 +13,7 @@ pub const ExprValue = union(ExprType) {
     lst: std.ArrayList(*Expr),
     lam: std.ArrayList(*Expr),
     mac: std.ArrayList(*Expr),
-    fun: fn (evaluator: *Interpreter, env: *Env, []const *Expr) anyerror!*Expr,
+    fun: fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr,
     env: *Env,
     err: *Expr,
     any: usize,
@@ -27,10 +28,10 @@ pub const Expr = struct {
 
     /// Create a new expression with an undefined value
     pub fn create(register_with_gc: bool) !*Expr {
-        var self = try allocator.create(Expr);
+        var self = try mem.allocator.create(Expr);
         if (register_with_gc) {
-            gc.inc();
-            try gc.registered_expr.append(self);
+            mem.gc.inc();
+            try mem.gc.registered_expr.append(self);
         }
         self.* = Expr{ .val = undefined };
         self.src.file = SourceLocation.current().file;
@@ -54,27 +55,27 @@ pub const Expr = struct {
     /// Returns an owned string representation of this expression
     pub fn toStringAlloc(self: *Expr) anyerror![]u8 {
         switch (self.val) {
-            ExprValue.sym => return try std.fmt.allocPrint(allocator, "{s}", .{self.val.sym}),
-            ExprValue.num => return try std.fmt.allocPrint(allocator, "{d}", .{self.val.num}),
-            ExprValue.lam => return try std.fmt.allocPrint(allocator, "<lambda>", .{}),
-            ExprValue.mac => return try std.fmt.allocPrint(allocator, "<macro>", .{}),
-            ExprValue.fun => return try std.fmt.allocPrint(allocator, "<function>", .{}),
-            ExprValue.env => return try std.fmt.allocPrint(allocator, "<env>", .{}),
-            ExprValue.any => return try std.fmt.allocPrint(allocator, "<any>", .{}),
+            ExprValue.sym => return try std.fmt.allocPrint(mem.allocator, "{s}", .{self.val.sym}),
+            ExprValue.num => return try std.fmt.allocPrint(mem.allocator, "{d}", .{self.val.num}),
+            ExprValue.lam => return try std.fmt.allocPrint(mem.allocator, "<lambda>", .{}),
+            ExprValue.mac => return try std.fmt.allocPrint(mem.allocator, "<macro>", .{}),
+            ExprValue.fun => return try std.fmt.allocPrint(mem.allocator, "<function>", .{}),
+            ExprValue.env => return try std.fmt.allocPrint(mem.allocator, "<env>", .{}),
+            ExprValue.any => return try std.fmt.allocPrint(mem.allocator, "<any>", .{}),
             ExprValue.err => |err_expr| {
                 const err_str = try err_expr.toStringAlloc();
-                defer allocator.free(err_str);
-                return try std.fmt.allocPrint(allocator, "{s}", .{err_str});
+                defer mem.allocator.free(err_str);
+                return try std.fmt.allocPrint(mem.allocator, "{s}", .{err_str});
             },
             ExprValue.lst => |lst| {
-                var buf = std.ArrayList(u8).init(allocator);
+                var buf = std.ArrayList(u8).init(mem.allocator);
                 defer buf.deinit();
                 var bufWriter = buf.writer();
 
                 try bufWriter.writeAll("(");
                 for (lst.items) |item, index| {
                     const itemBuf = try item.toStringAlloc();
-                    defer allocator.free(itemBuf);
+                    defer mem.allocator.free(itemBuf);
                     try bufWriter.writeAll(itemBuf);
                     if (index + 1 < lst.items.len) {
                         try bufWriter.writeAll(" ");
@@ -90,7 +91,7 @@ pub const Expr = struct {
     /// Prints the expression to stdout
     pub fn print(self: *Expr) anyerror!void {
         const str = try self.toStringAlloc();
-        defer allocator.free(str);
+        defer mem.allocator.free(str);
         try std.io.getStdOut().writer().print("{s}", .{str});
     }
 };
@@ -144,7 +145,7 @@ pub const Env = struct {
     pub fn replace(self: *Env, var_name: *Expr, val: ?*Expr) *Expr {
         if (self.map.get(var_name)) |_| {
             if (val) |value| {
-                self.putWithSymbol(var_name, value) catch return &expr_atom_nil;
+                self.putWithSymbol(var_name, value) catch return &intrinsics.expr_atom_nil;
                 return value;
             } else {
                 _ = self.map.swapRemove(var_name);
@@ -153,17 +154,17 @@ pub const Env = struct {
             return parent.replace(var_name, val);
         }
 
-        return &expr_atom_nil;
+        return &intrinsics.expr_atom_nil;
     }
 };
 
 /// Make an environment expression
 pub fn makeEnv(parent: ?*Env, name: []const u8) !*Env {
-    var environment = try allocator.create(Env);
+    var environment = try mem.allocator.create(Env);
     environment.parent = parent;
-    environment.map = @TypeOf(environment.map).init(allocator);
+    environment.map = @TypeOf(environment.map).init(mem.allocator);
     environment.name = name;
-    try gc.registered_envs.append(environment);
+    try mem.gc.registered_envs.append(environment);
     return environment;
 }
 
@@ -180,31 +181,31 @@ pub fn makeAtomAndTakeOwnership(literal: []const u8) anyerror!*Expr {
 /// Make and return a potentially interned atom (symbol or number)
 fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*Expr {
     const intrinsic_atoms: []const *Expr = &.{
-        &expr_atom_quasi_quote, &expr_atom_quote, &expr_atom_unquote,   &expr_atom_unquote_splicing, &expr_atom_list,
-        &expr_atom_if,          &expr_atom_cond,  &expr_atom_begin,     &expr_atom_nil,              &expr_atom_rest,
-        &expr_atom_true,        &expr_atom_false, &expr_atom_last_eval, &expr_atom_last_try_err,     &expr_atom_last_try_value,
+        &intrinsics.expr_atom_quasi_quote, &intrinsics.expr_atom_quote, &intrinsics.expr_atom_unquote,   &intrinsics.expr_atom_unquote_splicing, &intrinsics.expr_atom_list,
+        &intrinsics.expr_atom_if,          &intrinsics.expr_atom_cond,  &intrinsics.expr_atom_begin,     &intrinsics.expr_atom_nil,              &intrinsics.expr_atom_rest,
+        &intrinsics.expr_atom_true,        &intrinsics.expr_atom_false, &intrinsics.expr_atom_last_eval, &intrinsics.expr_atom_last_try_err,     &intrinsics.expr_atom_last_try_value,
     };
 
     // Lazy initialization of the interned intrinsics map
-    if (interned_intrinsics.count() == 0) {
+    if (mem.interned_intrinsics.count() == 0) {
         for (intrinsic_atoms) |atom| {
-            try interned_intrinsics.put(allocator, atom.val.sym, atom);
+            try mem.interned_intrinsics.put(mem.allocator, atom.val.sym, atom);
         }
     }
 
-    return interned_intrinsics.get(literal) orelse {
+    return mem.interned_intrinsics.get(literal) orelse {
         // Zig's parseFloat is too lenient and accepts input like "." and "--"
         // For Bio, we require at least one digit.
         if (std.mem.indexOfAny(u8, literal, "0123456789")) |_| {
             if (std.fmt.parseFloat(f64, literal)) |num| {
                 defer {
                     if (take_ownership) {
-                        allocator.free(literal);
+                        mem.allocator.free(literal);
                     }
                 }
                 const internalizable = @floor(num) == num and !std.math.isInf(num) and num > -1024 and num < 1024;
                 if (internalizable) {
-                    if (interned_nums.get(@floatToInt(i16, num))) |expr| {
+                    if (mem.interned_nums.get(@floatToInt(i16, num))) |expr| {
                         return expr;
                     }
                 }
@@ -212,9 +213,9 @@ fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*E
                 var expr = try Expr.create(false);
                 expr.val = ExprValue{ .num = num };
                 if (internalizable) {
-                    try interned_nums.put(allocator, @floatToInt(i16, num), expr);
+                    try mem.interned_nums.put(mem.allocator, @floatToInt(i16, num), expr);
                 } else {
-                    try gc.registered_expr.append(expr);
+                    try mem.gc.registered_expr.append(expr);
                 }
                 return expr;
             } else |_| {}
@@ -227,16 +228,16 @@ fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*E
 /// Make an interned literal atom
 pub fn makeAtomLiteral(literal: []const u8, take_ownership: bool) anyerror!*Expr {
     var sym = sym_blk: {
-        const maybe_entry = interned_syms.getEntry(literal);
+        const maybe_entry = mem.interned_syms.getEntry(literal);
         if (maybe_entry) |entry| {
             // There's already an entry, free the input if we're supposed to take ownership
             if (take_ownership) {
-                allocator.free(literal);
+                mem.allocator.free(literal);
             }
             break :sym_blk entry.key_ptr.*;
         } else {
-            const res = if (take_ownership) literal else try allocator.dupe(u8, literal);
-            try interned_syms.put(allocator, res, {});
+            const res = if (take_ownership) literal else try mem.allocator.dupe(u8, literal);
+            try mem.interned_syms.put(mem.allocator, res, {});
             break :sym_blk res;
         }
     };
@@ -249,7 +250,7 @@ pub fn makeAtomLiteral(literal: []const u8, take_ownership: bool) anyerror!*Expr
 /// Make a list expression
 pub fn makeListExpr(initial_expressions: ?[]const *Expr) !*Expr {
     var expr = try Expr.create(true);
-    expr.val = ExprValue{ .lst = std.ArrayList(*Expr).init(allocator) };
+    expr.val = ExprValue{ .lst = std.ArrayList(*Expr).init(mem.allocator) };
     if (initial_expressions) |expressions| {
         for (expressions) |e| {
             try expr.val.lst.append(e);
@@ -266,14 +267,14 @@ pub fn makeLambdaExpr(env: *Env) !*Expr {
     // time of lambda definition. This will be the parent environment whenever we
     // are invoking the lambda in Interpreter#eval
     expr.env = env;
-    expr.val = ExprValue{ .lam = std.ArrayList(*Expr).init(allocator) };
+    expr.val = ExprValue{ .lam = std.ArrayList(*Expr).init(mem.allocator) };
     return expr;
 }
 
 /// Make a macro expression
 pub fn makeMacroExpr() !*Expr {
     var expr = try Expr.create(true);
-    expr.val = ExprValue{ .mac = std.ArrayList(*Expr).init(allocator) };
+    expr.val = ExprValue{ .mac = std.ArrayList(*Expr).init(mem.allocator) };
     return expr;
 }
 

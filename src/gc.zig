@@ -1,5 +1,8 @@
 const std = @import("std");
-usingnamespace @import("ast.zig");
+const ast = @import("ast.zig");
+const Expr = ast.Expr;
+const Env = ast.Env;
+const ExprType = ast.ExprType;
 
 pub var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true }){};
 pub var allocator = &gpa.allocator;

@@ -1,8 +1,14 @@
 const std = @import("std");
-usingnamespace @import("ast.zig");
-usingnamespace @import("interpreter.zig");
-usingnamespace @import("gc.zig");
-usingnamespace @import("sourcelocation.zig");
+const ast = @import("ast.zig");
+const interpreter = @import("interpreter.zig");
+const mem = @import("gc.zig");
+const SourceLocation = @import("sourcelocation.zig").SourceLocation;
+const Env = ast.Env;
+const Expr = ast.Expr;
+const ExprValue = ast.ExprValue;
+const ExprType = ast.ExprType;
+const ExprErrors = ast.ExprErrors;
+const Interpreter = interpreter.Interpreter;
 
 // Intrinsic symbol- and function expressions. These expressions are not registered with
 // the GC and are thus considered pinned and never attemped deallocated.
@@ -113,11 +119,11 @@ pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        var path = try std.fs.path.resolve(allocator, &.{filename_expr.val.sym});
-        defer allocator.free(path);
+        var path = try std.fs.path.resolve(mem.allocator, &.{filename_expr.val.sym});
+        defer mem.allocator.free(path);
 
-        var file = try allocator.create(std.fs.File);
-        errdefer allocator.destroy(file);
+        var file = try mem.allocator.create(std.fs.File);
+        errdefer mem.allocator.destroy(file);
         file.* = std.fs.createFileAbsolute(path, .{ .truncate = false, .read = true }) catch |err| {
             try ev.printErrorFmt(&filename_expr.src, "Could not open file: {}\n", .{err});
             return err;
@@ -136,7 +142,7 @@ pub fn stdFileClose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     try requireType(ev, file_ptr, ExprType.any);
     const file = @intToPtr(*std.fs.File, file_ptr.val.any);
     file.close();
-    allocator.destroy(file);
+    mem.allocator.destroy(file);
     return &expr_atom_nil;
 }
 
@@ -146,14 +152,14 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
     const file = @intToPtr(*std.fs.File, file_ptr.val.any);
-    if (file.reader().readUntilDelimiterOrEofAlloc(allocator, '\n', std.math.maxInt(usize))) |maybe| {
+    if (file.reader().readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(usize))) |maybe| {
         if (maybe) |line| {
-            return makeAtomAndTakeOwnership(line);
+            return ast.makeAtomAndTakeOwnership(line);
         } else {
-            return try makeError(try makeAtomByDuplicating("EOF"));
+            return try ast.makeError(try ast.makeAtomByDuplicating("EOF"));
         }
     } else |_| {
-        return try makeError(try makeAtomByDuplicating("Could not read from file"));
+        return try ast.makeError(try ast.makeAtomByDuplicating("Could not read from file"));
     }
 }
 
@@ -198,7 +204,7 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
         while (!ev.has_errors) {
             if (ev.readBalancedExpr(&reader, "")) |maybe| {
                 if (maybe) |input| {
-                    defer allocator.free(input);
+                    defer mem.allocator.free(input);
                     if (try ev.parseAndEvalExpression(input)) |e| {
                         res = e;
                         try ev.env.put("#?", res);
@@ -221,7 +227,7 @@ pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     _ = ev;
     _ = env;
     _ = args;
-    try gc.run(true);
+    try mem.gc.run(true);
     return &expr_atom_nil;
 }
 
@@ -249,23 +255,23 @@ fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
     _ = ev;
     _ = env;
     const str = try expr.toStringAlloc();
-    defer allocator.free(str);
-    return try std.mem.replaceOwned(u8, allocator, str, "\\n", "\n");
+    defer mem.allocator.free(str);
+    return try std.mem.replaceOwned(u8, mem.allocator, str, "\\n", "\n");
 }
 
 /// Implements (string expr...), i.e. rendering of expressions as strings
 pub fn stdString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var builder = std.ArrayList(u8).init(allocator);
+    var builder = std.ArrayList(u8).init(mem.allocator);
     defer builder.deinit();
     const writer = builder.writer();
 
     for (args) |expr| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
-        defer allocator.free(rendered);
+        defer mem.allocator.free(rendered);
         try writer.writeAll(rendered);
     }
-    return makeAtomByDuplicating(builder.items);
+    return ast.makeAtomByDuplicating(builder.items);
 }
 
 /// Implements (print expr...)
@@ -273,7 +279,7 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     for (args) |expr, index| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
-        defer allocator.free(rendered);
+        defer mem.allocator.free(rendered);
         try std.io.getStdOut().writer().print("{s}", .{rendered});
         if (index + 1 < args.len) {
             try std.io.getStdOut().writer().print(" ", .{});
@@ -287,8 +293,8 @@ pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     _ = ev;
     _ = env;
     _ = args;
-    if (try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', std.math.maxInt(u32))) |line| {
-        return try makeAtomAndTakeOwnership(line);
+    if (try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(u32))) |line| {
+        return try ast.makeAtomAndTakeOwnership(line);
     }
     return &expr_atom_nil;
 }
@@ -306,11 +312,11 @@ pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 /// Print environments. Runs the GC to minimize the environment listing, unless no-gc is passed.
 pub fn stdEnv(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     if (!(args.len > 0 and args[0].val == ExprType.sym and std.mem.eql(u8, args[0].val.sym, "no-gc"))) {
-        try gc.run(false);
+        try mem.gc.run(false);
     }
 
     // Print out all environments, including which environment is the parent.
-    for (gc.registered_envs.items) |registered_env| {
+    for (mem.gc.registered_envs.items) |registered_env| {
         try std.io.getStdOut().writer().print("Environment for {s}: {*}\n", .{ registered_env.name, registered_env });
 
         var iter = registered_env.map.iterator();
@@ -359,7 +365,7 @@ pub fn stdTry(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 /// Create an error expression
 pub fn stdError(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
-    return try makeError(try ev.eval(env, args[0]));
+    return try ast.makeError(try ev.eval(env, args[0]));
 }
 
 pub fn isEmptyList(expr: *Expr) bool {
@@ -416,9 +422,9 @@ fn order(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!std.math.Ord
 pub fn stdOrder(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     return switch (try order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) })) {
-        std.math.Order.lt => return makeNumExpr(-1),
-        std.math.Order.eq => return makeNumExpr(0),
-        std.math.Order.gt => return makeNumExpr(1),
+        std.math.Order.lt => return ast.makeNumExpr(-1),
+        std.math.Order.eq => return ast.makeNumExpr(0),
+        std.math.Order.gt => return ast.makeNumExpr(1),
     };
 }
 
@@ -485,8 +491,8 @@ pub fn stdIsCallable(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 pub fn stdGenSym(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(0, args);
     ev.gensym_seq += 1;
-    const sym = try std.fmt.allocPrint(allocator, "gensym_{d}", .{ev.gensym_seq});
-    return makeAtomAndTakeOwnership(sym);
+    const sym = try std.fmt.allocPrint(mem.allocator, "gensym_{d}", .{ev.gensym_seq});
+    return ast.makeAtomAndTakeOwnership(sym);
 }
 
 /// Renders the expression and wraps it in double quotes, returning a new atom
@@ -495,10 +501,10 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
     const arg = try ev.eval(env, args[0]);
 
     const rendered = try render(ev, env, arg);
-    defer allocator.free(rendered);
+    defer mem.allocator.free(rendered);
 
-    const double_quoted = try std.fmt.allocPrint(allocator, "\"{s}\"", .{rendered});
-    return makeAtomAndTakeOwnership(double_quoted);
+    const double_quoted = try std.fmt.allocPrint(mem.allocator, "\"{s}\"", .{rendered});
+    return ast.makeAtomAndTakeOwnership(double_quoted);
 }
 
 /// Returns the first argument unevaluated. Multiple arguments is an error,
@@ -535,7 +541,7 @@ pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     const qq_expander = struct {
         fn expand(ev_inner: *Interpreter, env_inner: *Env, expr: *Expr) anyerror!*Expr {
             if (expr.val == ExprType.lst) {
-                var result_list = try makeListExpr(null);
+                var result_list = try ast.makeListExpr(null);
                 for (expr.val.lst.items) |item| {
                     // May encounter empty lists, such as lambda ()
                     if (item.val == ExprType.lst and item.val.lst.items.len > 0) {
@@ -611,7 +617,7 @@ pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
         if (end < 0) {
             end = size + end;
         }
-        var res = try makeListExpr(null);
+        var res = try ast.makeListExpr(null);
         if (size > 0 and end > 0 and start >= 0 and start < size and end <= size) {
             try res.val.lst.appendSlice(list.items[@intCast(usize, start)..@intCast(usize, end)]);
             return res;
@@ -633,7 +639,7 @@ pub fn stdSum(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         }
     }
 
-    return makeNumExpr(sum);
+    return ast.makeNumExpr(sum);
 }
 
 pub fn stdSub(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
@@ -653,7 +659,7 @@ pub fn stdSub(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         }
     }
 
-    return makeNumExpr(res);
+    return ast.makeNumExpr(res);
 }
 
 pub fn stdMul(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
@@ -666,7 +672,7 @@ pub fn stdMul(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         }
     }
 
-    return makeNumExpr(sum);
+    return ast.makeNumExpr(sum);
 }
 
 pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
@@ -689,21 +695,21 @@ pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         }
     }
 
-    return makeNumExpr(res);
+    return ast.makeNumExpr(res);
 }
 
 pub fn stdPow(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     try requireType(ev, args[0], ExprType.num);
     try requireType(ev, args[1], ExprType.num);
-    return makeNumExpr(std.math.pow(f64, args[0].val.num, args[1].val.num));
+    return ast.makeNumExpr(std.math.pow(f64, args[0].val.num, args[1].val.num));
 }
 
 pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = ev;
     _ = env;
     _ = args;
-    return makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
+    return ast.makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
 }
 
 /// Returns the length of a list or symbol, otherwise nil
@@ -711,10 +717,10 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const expr = try ev.eval(env, args[0]);
     switch (expr.val) {
-        ExprType.sym => return try makeNumExpr(@intToFloat(f64, expr.val.sym.len)),
+        ExprType.sym => return try ast.makeNumExpr(@intToFloat(f64, expr.val.sym.len)),
         ExprType.lst => {
             std.debug.print("Converting {d} to float\n", .{expr.val.lst.items.len});
-            return try makeNumExpr(@intToFloat(f64, expr.val.lst.items.len));
+            return try ast.makeNumExpr(@intToFloat(f64, expr.val.lst.items.len));
         },
         else => {
             try ev.printErrorFmt(&expr.src, "len function only works on lists and symbols\n", .{});
@@ -732,26 +738,26 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     if (std.mem.eql(u8, target_type.val.sym, "number")) {
         switch (expr.val) {
             ExprType.num => return expr,
-            ExprType.sym => return try makeNumExpr(try std.fmt.parseFloat(f64, expr.val.sym)),
+            ExprType.sym => return try ast.makeNumExpr(try std.fmt.parseFloat(f64, expr.val.sym)),
             else => return &expr_atom_nil,
         }
     } else if (std.mem.eql(u8, target_type.val.sym, "symbol")) {
         switch (expr.val) {
             ExprType.sym => return expr,
             ExprType.num => |num| {
-                const val = try std.fmt.allocPrint(allocator, "{d}", .{num});
-                return makeAtomLiteral(val, true);
+                const val = try std.fmt.allocPrint(mem.allocator, "{d}", .{num});
+                return ast.makeAtomLiteral(val, true);
             },
             ExprType.lst => |lst| {
-                var res = std.ArrayList(u8).init(allocator);
+                var res = std.ArrayList(u8).init(mem.allocator);
                 var exprWriter = res.writer();
                 defer res.deinit();
                 for (lst.items) |item| {
                     const str = try item.toStringAlloc();
-                    defer allocator.free(str);
+                    defer mem.allocator.free(str);
                     try exprWriter.writeAll(str);
                 }
-                return makeAtomByDuplicating(res.items);
+                return ast.makeAtomByDuplicating(res.items);
             },
             else => return &expr_atom_nil,
         }
@@ -759,7 +765,7 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         if (expr.val == ExprType.lst) {
             return expr;
         }
-        const list = try makeListExpr(null);
+        const list = try ast.makeListExpr(null);
         try list.val.lst.append(expr);
         return list;
     } else {
@@ -772,7 +778,7 @@ pub fn stdFloor(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     try requireType(ev, arg, ExprType.num);
-    return makeNumExpr(@floor(arg.val.num));
+    return ast.makeNumExpr(@floor(arg.val.num));
 }
 
 /// This is called when a lambda is defined, not when it's invoked
@@ -781,7 +787,7 @@ pub fn stdLambda(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     try requireMinimumArgCount(2, args);
     try requireType(ev, args[0], ExprType.lst);
 
-    var expr = try makeLambdaExpr(env);
+    var expr = try ast.makeLambdaExpr(env);
     try expr.val.lam.appendSlice(args);
     return expr;
 }
@@ -792,7 +798,7 @@ pub fn stdMacro(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     try requireType(ev, args[0], ExprType.lst);
 
-    var expr = try makeMacroExpr();
+    var expr = try ast.makeMacroExpr();
     try expr.val.mac.appendSlice(args);
     return expr;
 }
@@ -848,7 +854,7 @@ pub fn stdApply(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 
     const last_arg_list = try ev.eval(env, args[args.len - 1]);
     try requireType(ev, last_arg_list, ExprType.lst);
-    var fncall = try makeListExpr(null);
+    var fncall = try ast.makeListExpr(null);
     try fncall.val.lst.append(args[0]);
 
     if (args.len > 2) {
@@ -866,7 +872,7 @@ pub fn stdApply(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 
 /// Create a new list: (list 1 2 3 'a (* 3 x))
 pub fn stdList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var list = try makeListExpr(null);
+    var list = try ast.makeListExpr(null);
     for (args) |arg| {
         try list.val.lst.append(try ev.eval(env, arg));
     }
@@ -877,7 +883,7 @@ pub fn stdList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 /// lists, their elements are spliced into the result list. nil arguments are ignored.
 /// (append '(1 2) '(3 4)) -> (1 2 3 4)
 pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var list = try makeListExpr(null);
+    var list = try ast.makeListExpr(null);
     for (args) |arg| {
         const evaled = try ev.eval(env, arg);
         if (evaled.val == ExprType.lst) {

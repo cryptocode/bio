@@ -1,12 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
-usingnamespace @import("gc.zig");
+const mem = @import("gc.zig");
+const target = @import("builtin").target;
 
-const is_windows = std.Target.current.os.tag == .windows;
+const is_windows = target.os.tag == .windows;
 const linenoise = @cImport({
     if (!is_windows) {
         @cInclude("stddef.h");
-        @cInclude("linenoise.h");        
+        @cInclude("linenoise.h");
     }
 });
 
@@ -31,16 +32,16 @@ const Linenoise = struct {
         self.prompt = prompt;
         if (is_windows and self.prompt.len > 0) {
             try std.io.getStdOut().writer().print("{s}", .{self.prompt});
-        }        
+        }
     }
 
     /// Add the given entry to the REPL history
     pub fn addToHistory(_: *Linenoise, entry: []const u8) !void {
         if (!is_windows and entry.len > 0) {
-            const mem = try allocator.dupeZ(u8, entry);
-            defer allocator.free(mem);
+            const duped = try mem.allocator.dupeZ(u8, entry);
+            defer mem.allocator.free(duped);
             // Linenoise takes a copy
-            _ = linenoise.linenoiseHistoryAdd(mem);
+            _ = linenoise.linenoiseHistoryAdd(duped);
         }
     }
 
@@ -79,7 +80,7 @@ const Linenoise = struct {
                 std.heap.c_allocator.free(self.line.?);
             }
             return copy_count;
-        } else {            
+        } else {
             return std.io.getStdIn().reader().read(dest);
         }
     }

@@ -1,9 +1,14 @@
 const std = @import("std");
-usingnamespace @import("ast.zig");
-usingnamespace @import("intrinsics.zig");
-usingnamespace @import("gc.zig");
-usingnamespace @import("linereader.zig");
-usingnamespace @import("sourcelocation.zig");
+const ast = @import("ast.zig");
+const intrinsics = @import("intrinsics.zig");
+const mem = @import("gc.zig");
+const linereader = @import("linereader.zig");
+const SourceLocation = @import("sourcelocation.zig").SourceLocation;
+const Expr = ast.Expr;
+const ExprType = ast.ExprType;
+const ExprValue = ast.ExprValue;
+const Env = ast.Env;
+const ExprErrors = ast.ExprErrors;
 
 /// The expression reader and evaluator
 pub const Interpreter = struct {
@@ -16,77 +21,77 @@ pub const Interpreter = struct {
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
     pub fn init() !Interpreter {
-        gc = try GC.init();
+        mem.gc = try mem.GC.init();
         SourceLocation.initStack();
 
-        var instance = Interpreter{ .env = try makeEnv(null, "global") };
-        try instance.env.put("import", &expr_std_import);
-        try instance.env.put("exit", &expr_std_exit);
-        try instance.env.put("gc", &expr_std_run_gc);
-        try instance.env.put("#f", &expr_atom_false);
-        try instance.env.put("#t", &expr_atom_true);
-        try instance.env.put("#?", &expr_atom_nil);
-        try instance.env.put("#!", &expr_atom_nil);
-        try instance.env.put("nil", &expr_atom_nil);
-        try instance.env.put("math.pi", &expr_std_math_pi);
-        try instance.env.put("math.e", &expr_std_math_e);
-        try instance.env.put("math.floor", &expr_std_floor);
-        try instance.env.put("math.pow", &expr_std_pow);
-        try instance.env.put("time.now", &expr_std_time_now);
-        try instance.env.put("number?", &expr_std_is_number);
-        try instance.env.put("symbol?", &expr_std_is_symbol);
-        try instance.env.put("list?", &expr_std_is_list);
-        try instance.env.put("callable?", &expr_std_is_callable);
-        try instance.env.put("verbose", &expr_std_verbose);
-        try instance.env.put("assert", &expr_std_assert_true);
-        try instance.env.put("gensym", &expr_std_gensym);
-        try instance.env.put("print", &expr_std_print);
-        try instance.env.put("string", &expr_std_string);
-        try instance.env.put("readline", &expr_std_read_line);
-        try instance.env.put("as", &expr_std_as);
-        try instance.env.put("len", &expr_std_len);
-        try instance.env.put("env", &expr_std_env);
-        try instance.env.put("self", &expr_std_self);
-        try instance.env.put("quote", &expr_std_quote);
-        try instance.env.put("quasiquote", &expr_std_quasi_quote);
-        try instance.env.put("unquote", &expr_std_unquote);
-        try instance.env.put("unquote-splicing", &expr_std_unquote_splicing);
-        try instance.env.put("double-quote", &expr_std_double_quote);
-        try instance.env.put("range", &expr_std_range);
-        try instance.env.put("define", &expr_std_define);
-        try instance.env.put("var", &expr_std_define);
-        try instance.env.put("lambda", &expr_std_lambda);
-        try instance.env.put("macro", &expr_std_macro);
-        try instance.env.put("λ", &expr_std_lambda);
-        try instance.env.put("apply", &expr_std_apply);
-        try instance.env.put("list", &expr_std_list);
-        try instance.env.put("append", &expr_std_append);
-        try instance.env.put("eval", &expr_std_eval);
-        try instance.env.put("eval-string", &expr_std_eval_string);
-        try instance.env.put("set!", &expr_std_set);
-        try instance.env.put("unset!", &expr_std_unset);
-        try instance.env.put("try", &expr_std_try);
-        try instance.env.put("error", &expr_std_error);
-        try instance.env.put("+", &expr_std_sum);
-        try instance.env.put("-", &expr_std_sub);
-        try instance.env.put("*", &expr_std_mul);
-        try instance.env.put("/", &expr_std_div);
-        try instance.env.put("=", &expr_std_eq);
-        try instance.env.put("~=", &expr_std_eq_approx);
-        try instance.env.put("order", &expr_std_order);
-        try instance.env.put("io.open-file", &expr_std_file_open);
-        try instance.env.put("io.close-file", &expr_std_file_close);
-        try instance.env.put("io.read-line", &expr_std_file_read_line);
-        try instance.env.put("io.write-line", &expr_std_file_write_line);
+        var instance = Interpreter{ .env = try ast.makeEnv(null, "global") };
+        try instance.env.put("import", &intrinsics.expr_std_import);
+        try instance.env.put("exit", &intrinsics.expr_std_exit);
+        try instance.env.put("gc", &intrinsics.expr_std_run_gc);
+        try instance.env.put("#f", &intrinsics.expr_atom_false);
+        try instance.env.put("#t", &intrinsics.expr_atom_true);
+        try instance.env.put("#?", &intrinsics.expr_atom_nil);
+        try instance.env.put("#!", &intrinsics.expr_atom_nil);
+        try instance.env.put("nil", &intrinsics.expr_atom_nil);
+        try instance.env.put("math.pi", &intrinsics.expr_std_math_pi);
+        try instance.env.put("math.e", &intrinsics.expr_std_math_e);
+        try instance.env.put("math.floor", &intrinsics.expr_std_floor);
+        try instance.env.put("math.pow", &intrinsics.expr_std_pow);
+        try instance.env.put("time.now", &intrinsics.expr_std_time_now);
+        try instance.env.put("number?", &intrinsics.expr_std_is_number);
+        try instance.env.put("symbol?", &intrinsics.expr_std_is_symbol);
+        try instance.env.put("list?", &intrinsics.expr_std_is_list);
+        try instance.env.put("callable?", &intrinsics.expr_std_is_callable);
+        try instance.env.put("verbose", &intrinsics.expr_std_verbose);
+        try instance.env.put("assert", &intrinsics.expr_std_assert_true);
+        try instance.env.put("gensym", &intrinsics.expr_std_gensym);
+        try instance.env.put("print", &intrinsics.expr_std_print);
+        try instance.env.put("string", &intrinsics.expr_std_string);
+        try instance.env.put("readline", &intrinsics.expr_std_read_line);
+        try instance.env.put("as", &intrinsics.expr_std_as);
+        try instance.env.put("len", &intrinsics.expr_std_len);
+        try instance.env.put("env", &intrinsics.expr_std_env);
+        try instance.env.put("self", &intrinsics.expr_std_self);
+        try instance.env.put("quote", &intrinsics.expr_std_quote);
+        try instance.env.put("quasiquote", &intrinsics.expr_std_quasi_quote);
+        try instance.env.put("unquote", &intrinsics.expr_std_unquote);
+        try instance.env.put("unquote-splicing", &intrinsics.expr_std_unquote_splicing);
+        try instance.env.put("double-quote", &intrinsics.expr_std_double_quote);
+        try instance.env.put("range", &intrinsics.expr_std_range);
+        try instance.env.put("define", &intrinsics.expr_std_define);
+        try instance.env.put("var", &intrinsics.expr_std_define);
+        try instance.env.put("lambda", &intrinsics.expr_std_lambda);
+        try instance.env.put("macro", &intrinsics.expr_std_macro);
+        try instance.env.put("λ", &intrinsics.expr_std_lambda);
+        try instance.env.put("apply", &intrinsics.expr_std_apply);
+        try instance.env.put("list", &intrinsics.expr_std_list);
+        try instance.env.put("append", &intrinsics.expr_std_append);
+        try instance.env.put("eval", &intrinsics.expr_std_eval);
+        try instance.env.put("eval-string", &intrinsics.expr_std_eval_string);
+        try instance.env.put("set!", &intrinsics.expr_std_set);
+        try instance.env.put("unset!", &intrinsics.expr_std_unset);
+        try instance.env.put("try", &intrinsics.expr_std_try);
+        try instance.env.put("error", &intrinsics.expr_std_error);
+        try instance.env.put("+", &intrinsics.expr_std_sum);
+        try instance.env.put("-", &intrinsics.expr_std_sub);
+        try instance.env.put("*", &intrinsics.expr_std_mul);
+        try instance.env.put("/", &intrinsics.expr_std_div);
+        try instance.env.put("=", &intrinsics.expr_std_eq);
+        try instance.env.put("~=", &intrinsics.expr_std_eq_approx);
+        try instance.env.put("order", &intrinsics.expr_std_order);
+        try instance.env.put("io.open-file", &intrinsics.expr_std_file_open);
+        try instance.env.put("io.close-file", &intrinsics.expr_std_file_close);
+        try instance.env.put("io.read-line", &intrinsics.expr_std_file_read_line);
+        try instance.env.put("io.write-line", &intrinsics.expr_std_file_write_line);
 
         return instance;
     }
 
     /// Perform a full GC sweep and check for leaks
     pub fn deinit(_: *Interpreter) void {
-        gc.deinit();
+        mem.gc.deinit();
         SourceLocation.deinitStack();
-        if (!std.builtin.is_test and gpa.deinit()) {
+        if (!@import("builtin").is_test and mem.gpa.deinit()) {
             std.io.getStdOut().writer().print("Memory leaks detected\n", .{}) catch unreachable;
         }
     }
@@ -119,7 +124,7 @@ pub const Interpreter = struct {
 
     /// Run GC if needed, then parse and evaluate the expression
     pub fn parseAndEvalExpression(self: *Interpreter, line: []const u8) anyerror!?*Expr {
-        gc.runIfNeeded() catch {};
+        mem.gc.runIfNeeded() catch {};
         var input = std.mem.trimRight(u8, line, "\r\n");
 
         // Ignore empty lines and comments
@@ -146,7 +151,7 @@ pub const Interpreter = struct {
 
         tailcall_optimization_loop: while (maybe_next) |e| {
             if (self.exit_code) |_| {
-                return &expr_atom_nil;
+                return &intrinsics.expr_atom_nil;
             }
             switch (e.val) {
                 ExprValue.num, ExprValue.env, ExprValue.any => {
@@ -157,24 +162,24 @@ pub const Interpreter = struct {
                         return val;
                     } else {
                         try self.printErrorFmt(&e.src, "{s} is not defined\n", .{sym});
-                        return &expr_atom_nil;
+                        return &intrinsics.expr_atom_nil;
                     }
                 },
                 ExprValue.lst => |list| {
                     if (list.items.len == 0) {
-                        return &expr_atom_nil;
+                        return &intrinsics.expr_atom_nil;
                     }
 
                     const args_slice = list.items[1..];
-                    if (list.items[0] == &expr_atom_begin) {
-                        var res: *Expr = &expr_atom_nil;
+                    if (list.items[0] == &intrinsics.expr_atom_begin) {
+                        var res: *Expr = &intrinsics.expr_atom_nil;
                         for (args_slice[0 .. args_slice.len - 1]) |arg| {
                             res = try self.eval(env, arg);
                         }
                         maybe_next = args_slice[args_slice.len - 1];
                         continue;
-                    } else if (list.items[0] == &expr_atom_cond) {
-                        try requireMinimumArgCount(2, args_slice);
+                    } else if (list.items[0] == &intrinsics.expr_atom_cond) {
+                        try intrinsics.requireMinimumArgCount(2, args_slice);
 
                         const else_branch = args_slice[args_slice.len - 1];
                         if (else_branch.val != ExprType.lst or else_branch.val.lst.items.len != 1) {
@@ -187,10 +192,10 @@ pub const Interpreter = struct {
                                 maybe_next = branch.val.lst.items[0];
                                 continue :tailcall_optimization_loop;
                             } else if (branch.val == ExprType.lst) {
-                                try requireExactArgCount(2, branch.val.lst.items);
+                                try intrinsics.requireExactArgCount(2, branch.val.lst.items);
 
                                 const predicate = try self.eval(env, branch.val.lst.items[0]);
-                                if (predicate == &expr_atom_true) {
+                                if (predicate == &intrinsics.expr_atom_true) {
                                     maybe_next = branch.val.lst.items[1];
                                     continue :tailcall_optimization_loop;
                                 }
@@ -199,14 +204,14 @@ pub const Interpreter = struct {
                                 return ExprErrors.AlreadyReported;
                             }
                         }
-                        return &expr_atom_nil;
-                    } else if (list.items[0] == &expr_atom_if) {
-                        try requireMinimumArgCount(2, args_slice);
+                        return &intrinsics.expr_atom_nil;
+                    } else if (list.items[0] == &intrinsics.expr_atom_if) {
+                        try intrinsics.requireMinimumArgCount(2, args_slice);
 
                         var branch: usize = 1;
                         const predicate = try self.eval(env, args_slice[0]);
-                        if (predicate != &expr_atom_true) {
-                            if (isFalsy(predicate)) {
+                        if (predicate != &intrinsics.expr_atom_true) {
+                            if (intrinsics.isFalsy(predicate)) {
                                 branch += 1;
                             } else {
                                 try self.printErrorFmt(&e.src, "Not a boolean expression:\n", .{});
@@ -219,14 +224,14 @@ pub const Interpreter = struct {
                             maybe_next = args_slice[branch];
                             continue :tailcall_optimization_loop;
                         } else {
-                            return &expr_atom_nil;
+                            return &intrinsics.expr_atom_nil;
                         }
                     }
 
                     // Look up std function or lambda. If not found, the lookup has already reported the error.
                     var func = try self.eval(env, list.items[0]);
-                    if (func == &expr_atom_nil) {
-                        return &expr_atom_nil;
+                    if (func == &intrinsics.expr_atom_nil) {
+                        return &intrinsics.expr_atom_nil;
                     }
 
                     const kind = func.val;
@@ -255,7 +260,7 @@ pub const Interpreter = struct {
                             return fun(self, env, args_slice) catch |err| {
                                 try self.printErrorFmt(&e.src, "", .{});
                                 try self.printError(err);
-                                return &expr_atom_nil;
+                                return &intrinsics.expr_atom_nil;
                             };
                         },
 
@@ -264,16 +269,16 @@ pub const Interpreter = struct {
                             const parent_env = if (kind == ExprType.lam) func.env else env;
                             const kind_str = if (kind == ExprType.lam) "lambda" else "macro";
 
-                            var local_env = try makeEnv(parent_env, kind_str);
+                            var local_env = try ast.makeEnv(parent_env, kind_str);
                             var formal_param_count = fun.items[0].val.lst.items.len;
                             var logical_arg_count = args_slice.len;
 
                             // Bind arguments to the new environment
                             for (fun.items[0].val.lst.items) |param, index| {
                                 if (param.val == ExprType.sym) {
-                                    if (param == &expr_atom_rest) {
+                                    if (param == &intrinsics.expr_atom_rest) {
                                         formal_param_count -= 1;
-                                        var rest_args = try makeListExpr(null);
+                                        var rest_args = try ast.makeListExpr(null);
                                         for (args_slice[index..]) |rest_param| {
                                             logical_arg_count -= 1;
                                             if (kind == ExprType.lam) {
@@ -304,7 +309,7 @@ pub const Interpreter = struct {
 
                             if (logical_arg_count != formal_param_count) {
                                 try self.printErrorFmt(&e.src, "{s} received {d} arguments, expected {d}\n", .{ kind_str, args_slice.len, formal_param_count });
-                                return &expr_atom_nil;
+                                return &intrinsics.expr_atom_nil;
                             }
 
                             // Evaluate body, except the last expression which is TCO'ed
@@ -313,10 +318,10 @@ pub const Interpreter = struct {
                                 result = self.eval(local_env, body_expr) catch |err| {
                                     try self.printErrorFmt(&body_expr.src, "Could not evaluate {s} body:", .{kind_str});
                                     try self.printError(err);
-                                    return &expr_atom_nil;
+                                    return &intrinsics.expr_atom_nil;
                                 };
                                 if (self.has_errors) {
-                                    return &expr_atom_nil;
+                                    return &intrinsics.expr_atom_nil;
                                 }
                             }
 
@@ -332,7 +337,7 @@ pub const Interpreter = struct {
                                 result = self.eval(local_env, last_expr) catch |err| {
                                     try self.printErrorFmt(&last_expr.src, "Could not evaluate {s} body:", .{kind_str});
                                     try self.printError(err);
-                                    return &expr_atom_nil;
+                                    return &intrinsics.expr_atom_nil;
                                 };
                                 return self.eval(local_env, result);
                             }
@@ -340,18 +345,18 @@ pub const Interpreter = struct {
                         else => {
                             try self.printErrorFmt(&e.src, "Not a function or macro:\n", .{});
                             try list.items[0].print();
-                            return &expr_atom_nil;
+                            return &intrinsics.expr_atom_nil;
                         },
                     }
-                    return &expr_atom_nil;
+                    return &intrinsics.expr_atom_nil;
                 },
                 else => {
                     try self.printErrorFmt(&e.src, "Invalid expression: {}\n", .{e});
-                    return &expr_atom_nil;
+                    return &intrinsics.expr_atom_nil;
                 },
             }
         }
-        return &expr_atom_nil;
+        return &intrinsics.expr_atom_nil;
     }
 
     /// Recursively read expressions
@@ -360,7 +365,7 @@ pub const Interpreter = struct {
             if (val.len > 0) {
                 switch (val[0]) {
                     '(' => {
-                        var list = try makeListExpr(null);
+                        var list = try ast.makeListExpr(null);
 
                         while (it.peek()) |peek| {
                             if (peek.len == 0) {
@@ -379,13 +384,13 @@ pub const Interpreter = struct {
                         return ExprErrors.UnexpectedRightParen;
                     },
                     ',' => {
-                        var unquote_op: *Expr = &expr_atom_unquote;
+                        var unquote_op: *Expr = &intrinsics.expr_atom_unquote;
                         var index_adjust: usize = 1;
 
                         // The Lisperator has no understanding of the , and ,@ prefixes, so we adjust it manually
                         // For instance, if the current token is ,@abc then the next token will be abc
                         if (val.len > 1 and val[1] == '@') {
-                            unquote_op = &expr_atom_unquote_splicing;
+                            unquote_op = &intrinsics.expr_atom_unquote_splicing;
                             if (val.len > 2) {
                                 index_adjust += 1;
                             }
@@ -395,19 +400,19 @@ pub const Interpreter = struct {
                             it.index = it.prev_index + index_adjust;
                         }
 
-                        return try makeListExpr(&.{ unquote_op, try self.read(it) });
+                        return try ast.makeListExpr(&.{ unquote_op, try self.read(it) });
                     },
                     '\'' => {
-                        return try makeListExpr(&.{ &expr_atom_quote, try self.read(it) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try self.read(it) });
                     },
                     '`' => {
-                        return try makeListExpr(&.{ &expr_atom_quasi_quote, try self.read(it) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quasi_quote, try self.read(it) });
                     },
                     '"' => {
-                        return try makeListExpr(&.{ &expr_atom_quote, try makeAtomByDuplicating(val[1..val.len]) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(val[1..val.len]) });
                     },
                     else => {
-                        return makeAtomByDuplicating(val);
+                        return ast.makeAtomByDuplicating(val);
                     },
                 }
             } else {
@@ -423,15 +428,15 @@ pub const Interpreter = struct {
     /// count parenthesis inside string literals.
     pub fn readBalancedExpr(self: *Interpreter, reader: anytype, prompt: []const u8) anyerror!?[]u8 {
         var balance: isize = 0;
-        var expr = std.ArrayList(u8).init(allocator);
+        var expr = std.ArrayList(u8).init(mem.allocator);
         defer expr.deinit();
         var exprWriter = expr.writer();
 
-        try linenoise_wrapper.printPrompt(prompt);
+        try linereader.linenoise_wrapper.printPrompt(prompt);
         line_reader: while (true) {
-            if (reader.readUntilDelimiterOrEofAlloc(allocator, '\n', 2048)) |maybe| {
+            if (reader.readUntilDelimiterOrEofAlloc(mem.allocator, '\n', 2048)) |maybe| {
                 if (maybe) |line| {
-                    defer allocator.free(line);
+                    defer mem.allocator.free(line);
                     SourceLocation.current().line += 1;
 
                     var onlySeenWhitespace = true;
@@ -470,7 +475,7 @@ pub const Interpreter = struct {
             if (balance <= 0) {
                 break;
             } else {
-                linenoise_wrapper.hidePrompt();
+                linereader.linenoise_wrapper.hidePrompt();
             }
         }
 
@@ -499,10 +504,10 @@ pub const Interpreter = struct {
 
         try std.io.getStdOut().writer().print("{s}\n\n", .{logo});
         while (true) {
-            if (self.readBalancedExpr(&linenoise_reader, "bio> ")) |maybe| {
+            if (self.readBalancedExpr(&linereader.linenoise_reader, "bio> ")) |maybe| {
                 if (maybe) |input| {
-                    defer allocator.free(input);
-                    _ = try linenoise_wrapper.addToHistory(input);
+                    defer mem.allocator.free(input);
+                    _ = try linereader.linenoise_wrapper.addToHistory(input);
                     var maybeResult = self.parseAndEvalExpression(input) catch |err| {
                         try self.printErrorFmt(SourceLocation.current(), "read-eval failed: \n", .{});
                         try self.printError(err);
@@ -512,7 +517,7 @@ pub const Interpreter = struct {
                     if (maybeResult) |res| {
                         // Update the last expression and print it
                         try self.env.put("#?", res);
-                        if (res != &expr_atom_nil or self.verbose) {
+                        if (res != &intrinsics.expr_atom_nil or self.verbose) {
                             try res.print();
                         }
                         try std.io.getStdOut().writer().print("\n\n", .{});
@@ -520,7 +525,7 @@ pub const Interpreter = struct {
 
                     if (self.exit_code) |exit_code| {
                         // Defer is not called as exit is [noreturn]
-                        allocator.free(input);
+                        mem.allocator.free(input);
                         self.deinit();
                         std.process.exit(exit_code);
                     }

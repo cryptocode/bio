@@ -1,5 +1,5 @@
 const std = @import("std");
-usingnamespace @import("gc.zig");
+const mem = @import("gc.zig");
 
 /// Maintains current source locations, pushing and popping from a stack as
 /// files are being imported.
@@ -17,7 +17,7 @@ pub const SourceLocation = struct {
         loc.line = 0;
         loc.col = 0;
         if (!files.contains(file)) {
-            loc.file = try allocator.dupe(u8, file);
+            loc.file = try mem.allocator.dupe(u8, file);
             try files.put(loc.file, {});
         } else {
             loc.file = files.getEntry(file).?.key_ptr.*;
@@ -29,8 +29,8 @@ pub const SourceLocation = struct {
     }
 
     pub fn initStack() void {
-        stack = std.ArrayList(SourceLocation).init(allocator);
-        files = std.StringHashMap(void).init(allocator);
+        stack = std.ArrayList(SourceLocation).init(mem.allocator);
+        files = std.StringHashMap(void).init(mem.allocator);
         push("repl") catch unreachable;
     }
 
@@ -40,7 +40,7 @@ pub const SourceLocation = struct {
         }
         var it = files.iterator();
         while (it.next()) |file| {
-            allocator.free(file.key_ptr.*);
+            mem.allocator.free(file.key_ptr.*);
         }
         files.deinit();
         stack.deinit();
