@@ -36,6 +36,7 @@ pub var expr_std_assert_true = Expr{ .val = ExprValue{ .fun = stdAssertTrue } };
 pub var expr_std_is_number = Expr{ .val = ExprValue{ .fun = stdIsNumber } };
 pub var expr_std_is_symbol = Expr{ .val = ExprValue{ .fun = stdIsSymbol } };
 pub var expr_std_is_list = Expr{ .val = ExprValue{ .fun = stdIsList } };
+pub var expr_std_is_err = Expr{ .val = ExprValue{ .fun = stdIsError } };
 pub var expr_std_is_callable = Expr{ .val = ExprValue{ .fun = stdIsCallable } };
 pub var expr_std_gensym = Expr{ .val = ExprValue{ .fun = stdGenSym } };
 pub var expr_std_quote = Expr{ .val = ExprValue{ .fun = stdQuote } };
@@ -224,16 +225,13 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 }
 
 pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = ev;
-    _ = env;
-    _ = args;
+    _ = &.{ev, env, args};
     try mem.gc.run(true);
     return &expr_atom_nil;
 }
 
 pub fn stdVerbose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = env;
-    _ = args;
+    _ = &.{env, args};
     ev.verbose = !ev.verbose;
     const bool_str = if (ev.verbose) "on " else "off";
     try std.io.getStdOut().writer().print("Verbosity is now {s}\n", .{bool_str});
@@ -252,8 +250,7 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 /// Renders the expression as a string and returns an owned slice.
 /// For now, only newline escapes are done (this should be extended to handle all of them)
 fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
-    _ = ev;
-    _ = env;
+    _ = &.{ev, env};
     const str = try expr.toStringAlloc();
     defer mem.allocator.free(str);
     return try std.mem.replaceOwned(u8, mem.allocator, str, "\\n", "\n");
@@ -290,9 +287,7 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 
 /// Implements (readline)
 pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = ev;
-    _ = env;
-    _ = args;
+    _ = &.{ev, env, args};
     if (try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(u32))) |line| {
         return try ast.makeAtomAndTakeOwnership(line);
     }
@@ -302,8 +297,7 @@ pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
 /// Returns the current environment as an expression, allowing the user to make constructs
 /// such as modules and object instances.
 pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = ev;
-    _ = args;
+    _ = &.{ev, args};
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .env = env };
     return expr;
@@ -372,8 +366,13 @@ pub fn isEmptyList(expr: *Expr) bool {
     return (expr.val == ExprType.lst and expr.val.lst.items.len == 0);
 }
 
+pub fn isError(expr: *Expr) bool {
+    return expr.val == ExprType.err;
+}
+
+
 pub fn isFalsy(expr: *Expr) bool {
-    return expr == &expr_atom_false or expr == &expr_atom_nil or isEmptyList(expr);
+    return expr == &expr_atom_false or expr == &expr_atom_nil or isEmptyList(expr) or isError(expr);
 }
 
 /// Ordering, where lists are compared recurisively
@@ -392,7 +391,7 @@ fn order(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!std.math.Ord
         return std.math.Order.eq;
     } else if (op1 == &expr_atom_true) {
         return std.math.Order.lt;
-    } else if (op1 == &expr_atom_false and (op2 == &expr_atom_false or op2 == &expr_atom_nil)) {
+    } else if (op1 == &expr_atom_false and isFalsy(op2)) { // and (op2 == &expr_atom_false or op2 == &expr_atom_nil)) {
         return std.math.Order.eq;
     } else if (op1 == &expr_atom_false) {
         return std.math.Order.lt;
@@ -479,6 +478,11 @@ pub fn stdIsList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     return if (arg.val == ExprType.lst) &expr_atom_true else &expr_atom_false;
 }
 
+pub fn stdIsError(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    const arg = try ev.eval(env, args[0]);
+    return if (arg.val == ExprType.err) &expr_atom_true else &expr_atom_false;
+}
+
 pub fn stdIsCallable(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
@@ -510,24 +514,21 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 /// Returns the first argument unevaluated. Multiple arguments is an error,
 /// though the argument may be a list. (quote (1 2 3)) -> '(1 2 3)
 pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = ev;
-    _ = env;
+    _ = &.{ev, env};
     try requireExactArgCount(1, args);
     return args[0];
 }
 
 /// Unquote is only useful in combination with quasiquoting, see stdQuasiQuote
 pub fn stdUnquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = env;
-    _ = args;
+    _ = &.{env, args};
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
 
 /// Unquote with splicing is only useful in combination with quasiquoting, see stdQuasiQuote
 pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = env;
-    _ = args;
+    _ = &.{env, args};
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote-splicing inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
@@ -706,9 +707,7 @@ pub fn stdPow(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
 }
 
 pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = ev;
-    _ = env;
-    _ = args;
+    _ = &.{ev, env, args};
     return ast.makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
 }
 
@@ -729,7 +728,8 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     }
 }
 
-/// Convert between symbols, numbers and lists, such as (as number (readline))
+/// Convert between symbols, numbers and lists. Example: (as number (readline))
+/// Returns nil if the conversion fails
 pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const target_type = args[0];
@@ -738,7 +738,12 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     if (std.mem.eql(u8, target_type.val.sym, "number")) {
         switch (expr.val) {
             ExprType.num => return expr,
-            ExprType.sym => return try ast.makeNumExpr(try std.fmt.parseFloat(f64, expr.val.sym)),
+            ExprType.sym => {
+                const float = std.fmt.parseFloat(f64, expr.val.sym) catch {
+                    return &expr_atom_nil;
+                };
+                return try ast.makeNumExpr(float);
+            },
             else => return &expr_atom_nil,
         }
     } else if (std.mem.eql(u8, target_type.val.sym, "symbol")) {

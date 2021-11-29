@@ -41,6 +41,7 @@ pub const Interpreter = struct {
         try instance.env.put("number?", &intrinsics.expr_std_is_number);
         try instance.env.put("symbol?", &intrinsics.expr_std_is_symbol);
         try instance.env.put("list?", &intrinsics.expr_std_is_list);
+        try instance.env.put("error?", &intrinsics.expr_std_is_err);
         try instance.env.put("callable?", &intrinsics.expr_std_is_callable);
         try instance.env.put("verbose", &intrinsics.expr_std_verbose);
         try instance.env.put("assert", &intrinsics.expr_std_assert_true);
@@ -211,12 +212,9 @@ pub const Interpreter = struct {
                         var branch: usize = 1;
                         const predicate = try self.eval(env, args_slice[0]);
                         if (predicate != &intrinsics.expr_atom_true) {
+                            // Anything not defined as falsy is considered true in a boolean context
                             if (intrinsics.isFalsy(predicate)) {
                                 branch += 1;
-                            } else {
-                                try self.printErrorFmt(&e.src, "Not a boolean expression:\n", .{});
-                                try predicate.print();
-                                return ExprErrors.AlreadyReported;
                             }
                         }
 

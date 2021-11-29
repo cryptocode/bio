@@ -1,4 +1,8 @@
+<img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
+
 Bio is a Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
+
+The language is Scheme inspired and features macros, garbage collection, error handling, an object/module facility, and comes with a small standard library.
 
 A description of the project is available at [dev.to](https://dev.to/stein/bio-all-your-parentheses-are-belong-to-us-25lo)
 
@@ -108,7 +112,7 @@ You can also use `import` to evaluate files from the REPL, e.g. `(import "exampl
 
 ## Running tests
 
-The test suite in `test.lisp` can be evaluated with `zig test bio.zig` or `bio run test.lisp`
+The test suite in `test.lisp` can be evaluated with `zig test src/main.zig` or `./bio run test.lisp`
 
 # Language Reference
 
@@ -185,7 +189,7 @@ The 'typename' functions returns a string representation of the type. The most s
 "function"
 ```
 
-### number? symbol? list? bool? callable?
+### number? symbol? list? bool? callable? error?
 
 Predicates to determine expression types. There's also an `atom?` predicate in the standard library.
 
@@ -200,6 +204,7 @@ These all return #t
 (bool? #f)
 (list? '(abc))
 (callable? +)
+(error? (math.safe-div 4 0))
 ```
 
 ### var and define
@@ -904,6 +909,8 @@ The `each` function allows for convenient iteration of lists. The first argument
 ### io.read-number and io.read-string
 
 Read number and string expressions from stdin.
+
+If read-number is not a number, an `error` expression is returned.
 
 ### typename
 

@@ -15,6 +15,7 @@
     (assert (list? '()))
     (assert (list? '(1 2 3)))
     (assert (list? nums))
+    (assert (error? (math.safe-div 1 0)))
 
     (assert (= 7 (eval (+ 2 5))))
     (assert (= 7 (eval '(+ 2 5))))
@@ -107,6 +108,14 @@
     (assert (= 0 (math.fib 0)))
     (assert (= 55 (math.fib 10)))
 
+    ; Errors are falsy
+    (assert (= #f (math.safe-div 4 0)))
+    (assert (not (if (math.safe-div 4 0) #t #f)))
+    (assert (if (math.safe-div 4 1) #t #f))
+
+    ; Anything not falsy is true
+    (assert (if 2 #t))
+
     ; Test correct scoping of unset!
     (assert (= 5 (begin (var x 5) (var local (lambda () (begin (var x 100) (unset! x)))) (local) x)))
 
@@ -121,12 +130,15 @@
 
     ; Test while macro
     (var counter 0)
-
     (while (< counter 100)
         (set! counter (+ counter 1))
     )
-
     (assert (= counter 100))
+
+    ; Test n-times macro
+    (var countdown 5)
+    (n-times 5 (dec! countdown))
+    (assert (= countdown 0))
 
     ; Test (each)
     (let ((i 0) (bag-of-numbers '(1 2 3 4 5)))

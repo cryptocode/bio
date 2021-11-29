@@ -93,6 +93,25 @@
     )
 ))
 
+; The n-times macro expands to a tail-recursive lambda
+(var n-times (macro (n &rest body)
+    (var loop-name (gensym))
+    (var countdown-var (gensym))
+    `(begin
+        (var ,countdown-var ,n)
+        (var ,loop-name (lambda ()
+            (if (> ,countdown-var 0)
+                (begin
+                    ,@body
+                    (dec! ,countdown-var)
+                    (,loop-name)
+                )
+            )
+        ))
+        (,loop-name)
+    )
+))
+
 ; Loop over each list item and call the supplied function with that item as an argument
 (var each (lambda (lst fn)
     (if (not (nil? (car lst)))
@@ -188,9 +207,13 @@
     res
 ))
 
-; Read a number from stdin, nil if input is not a number
+; Read a number from stdin, returns an error if input is not a number
 (var io.read-number (lambda ()
-    (as number (readline))
+    (var input (readline))
+    (var n (as number input))
+    (if (nil? n)
+        (error (as symbol (list input " is not a number")))
+        n)
 ))
 
 ; Read a string from stdin
