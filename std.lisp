@@ -209,16 +209,11 @@
 
 ; Read a number from stdin, returns an error if input is not a number
 (var io.read-number (lambda ()
-    (var input (readline))
+    (var input (io.read-line))
     (var n (as number input))
     (if (nil? n)
         (error (as symbol (list input " is not a number")))
         n)
-))
-
-; Read a string from stdin
-(var io.read-string (lambda ()
-    (readline)
 ))
 
 ; Increment variable

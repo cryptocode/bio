@@ -170,6 +170,19 @@
     ; I failed expression without an failure branch evaluates to nil
     (assert (nil? (try (map + '1) #t)))
 
+    ; Test tokenizing
+    (assert (= (string.split "" ",") '()))
+    (assert (= (string.split "a" ",") '(a)))
+    (assert (= (string.split "a,b,c" ",") '(a b c)))
+    (assert (= (string.split "a,b,c," ",") '(a b c)))
+    (assert (= (string.split "a,b;c," ",;") '(a b c)))
+    (assert (= (string.split " " ",") (list " ")))
+
+    ; Test reading file by opening ourself and reading the first byte
+    (var file (io.open-file "test.lisp"))
+    (assert (= (io.read-byte file) ";"))
+    (io.close-file file)
+
     (print "Tests passed\n")
 
     ; You can load and use this file as a module with:

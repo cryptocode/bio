@@ -1,13 +1,13 @@
-; The database is a list where each entry is a ("name" rating) pair
-; These are serialized to file as Bio expressions, and then replayed
-; on startup.
+; This example is a simple interactive persistent album database. The database is a
+; list where each entry is a ("name" rating) pair. These are serialized to file as
+; Bio expressions, and then replayed on startup.
 (var albums '())
 
 (var print-menu (lambda ()
     (print "1: Add    2: Find by name    3: List all    4: Exit\n")
 ))
 
-(var print-heading (λ (heading)
+(var print-heading (lambda (heading)
     (print "\n------------------------------------\n")
     (print heading "\n")
     (print "------------------------------------\n")
@@ -16,10 +16,10 @@
 ; Add new album to database
 (var album.add (lambda ()
     (print "\nName of album: ")
-    (var album-name (readline))
+    (var album-name (io.read-line))
 
     (print "Rating: ")
-    (var rating (as number (readline)))
+    (var rating (as number (io.read-line)))
 
     (set! albums (append albums (list (list album-name rating))))
     (print "\nAlbum was added!\n")
@@ -51,7 +51,7 @@
 ; Find an album by name
 (var album.find (lambda ()
     (print "Album name: ")
-    (var to-find (readline))
+    (var to-find (io.read-line))
     (each albums (lambda (album)
         (if (= to-find (car album))
             (begin

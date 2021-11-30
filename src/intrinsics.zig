@@ -48,7 +48,6 @@ pub var expr_std_len = Expr{ .val = ExprValue{ .fun = stdLen } };
 pub var expr_std_range = Expr{ .val = ExprValue{ .fun = stdRange } };
 pub var expr_std_string = Expr{ .val = ExprValue{ .fun = stdString } };
 pub var expr_std_print = Expr{ .val = ExprValue{ .fun = stdPrint } };
-pub var expr_std_read_line = Expr{ .val = ExprValue{ .fun = stdReadline } };
 pub var expr_std_env = Expr{ .val = ExprValue{ .fun = stdEnv } };
 pub var expr_std_self = Expr{ .val = ExprValue{ .fun = stdSelf } };
 pub var expr_std_define = Expr{ .val = ExprValue{ .fun = stdDefine } };
@@ -58,6 +57,7 @@ pub var expr_std_eval_string = Expr{ .val = ExprValue{ .fun = stdEvalString } };
 pub var expr_std_eval = Expr{ .val = ExprValue{ .fun = stdEval } };
 pub var expr_std_apply = Expr{ .val = ExprValue{ .fun = stdApply } };
 pub var expr_std_list = Expr{ .val = ExprValue{ .fun = stdList } };
+pub var expr_std_split = Expr{ .val = ExprValue{ .fun = stdSplit } };
 pub var expr_std_append = Expr{ .val = ExprValue{ .fun = stdAppend } };
 pub var expr_std_unset = Expr{ .val = ExprValue{ .fun = stdUnset } };
 pub var expr_std_error = Expr{ .val = ExprValue{ .fun = stdError } };
@@ -79,6 +79,7 @@ pub var expr_std_file_open = Expr{ .val = ExprValue{ .fun = stdFileOpen } };
 pub var expr_std_file_close = Expr{ .val = ExprValue{ .fun = stdFileClose } };
 pub var expr_std_file_read_line = Expr{ .val = ExprValue{ .fun = stdFileReadLine } };
 pub var expr_std_file_write_line = Expr{ .val = ExprValue{ .fun = stdFileWriteLine } };
+pub var expr_std_file_read_byte = Expr{ .val = ExprValue{ .fun = stdFileReadByte } };
 
 pub fn requireExactArgCount(args_required: usize, args: []const *Expr) !void {
     if (args.len != args_required) {
@@ -147,13 +148,33 @@ pub fn stdFileClose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     return &expr_atom_nil;
 }
 
-/// Reads a line from the file
-pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
+/// Reads a byte from the given file
+pub fn stdFileReadByte(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
     const file = @intToPtr(*std.fs.File, file_ptr.val.any);
-    if (file.reader().readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(usize))) |maybe| {
+    if (file.reader().readByte()) |byte| {
+        return ast.makeAtomByDuplicating(&.{byte});
+    } else |e| switch (e) {
+        error.EndOfStream => return try ast.makeError(try ast.makeAtomByDuplicating("EOF")),
+        else => return try ast.makeError(try ast.makeAtomByDuplicating("Could not read from file")),
+    }
+}
+
+/// Reads a line from the given file, or from stdin if no argument is given
+pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
+    var reader: std.fs.File.Reader = std.io.getStdIn().reader();
+    if (args.len > 0) {
+        try requireExactArgCount(1, args);
+        const file_ptr = try ev.eval(env, args[0]);
+        try requireType(ev, file_ptr, ExprType.any);
+        const file = @intToPtr(*std.fs.File, file_ptr.val.any);
+
+        reader = file.reader();
+    }
+
+    if (reader.readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(usize))) |maybe| {
         if (maybe) |line| {
             return ast.makeAtomAndTakeOwnership(line);
         } else {
@@ -164,17 +185,25 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
     }
 }
 
-/// Appends a line to the file
+/// Appends a line to the file, or to stdout if no argument is given
 pub fn stdFileWriteLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    try requireExactArgCount(2, args);
-    const file_ptr = try ev.eval(env, args[0]);
-    const line_to_write = try ev.eval(env, args[1]);
-    try requireType(ev, file_ptr, ExprType.any);
+    try requireMinimumArgCount(1, args);
+    const line_to_write = try ev.eval(env, args[args.len - 1]);
     try requireType(ev, line_to_write, ExprType.sym);
-    const file = @intToPtr(*std.fs.File, file_ptr.val.any);
-    try file.seekFromEnd(0);
-    try file.writer().writeAll(line_to_write.val.sym);
-    _ = try file.writer().write("\n");
+
+    var writer: std.fs.File.Writer = std.io.getStdOut().writer();
+    if (args.len > 1) {
+        try requireExactArgCount(2, args);
+        const file_ptr = try ev.eval(env, args[0]);
+        try requireType(ev, file_ptr, ExprType.any);
+        const file = @intToPtr(*std.fs.File, file_ptr.val.any);
+        try file.seekFromEnd(0);
+
+        writer = file.writer();
+    }
+
+    try writer.writeAll(line_to_write.val.sym);
+    _ = try writer.write("\n");
     return &expr_atom_nil;
 }
 
@@ -225,13 +254,13 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 }
 
 pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ev, env, args};
+    _ = &.{ ev, env, args };
     try mem.gc.run(true);
     return &expr_atom_nil;
 }
 
 pub fn stdVerbose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{env, args};
+    _ = &.{ env, args };
     ev.verbose = !ev.verbose;
     const bool_str = if (ev.verbose) "on " else "off";
     try std.io.getStdOut().writer().print("Verbosity is now {s}\n", .{bool_str});
@@ -250,7 +279,7 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 /// Renders the expression as a string and returns an owned slice.
 /// For now, only newline escapes are done (this should be extended to handle all of them)
 fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
-    _ = &.{ev, env};
+    _ = &.{ ev, env };
     const str = try expr.toStringAlloc();
     defer mem.allocator.free(str);
     return try std.mem.replaceOwned(u8, mem.allocator, str, "\\n", "\n");
@@ -285,19 +314,10 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     return &expr_atom_nil;
 }
 
-/// Implements (readline)
-pub fn stdReadline(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ev, env, args};
-    if (try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(u32))) |line| {
-        return try ast.makeAtomAndTakeOwnership(line);
-    }
-    return &expr_atom_nil;
-}
-
 /// Returns the current environment as an expression, allowing the user to make constructs
 /// such as modules and object instances.
 pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ev, args};
+    _ = &.{ ev, args };
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .env = env };
     return expr;
@@ -369,7 +389,6 @@ pub fn isEmptyList(expr: *Expr) bool {
 pub fn isError(expr: *Expr) bool {
     return expr.val == ExprType.err;
 }
-
 
 pub fn isFalsy(expr: *Expr) bool {
     return expr == &expr_atom_false or expr == &expr_atom_nil or isEmptyList(expr) or isError(expr);
@@ -514,21 +533,21 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 /// Returns the first argument unevaluated. Multiple arguments is an error,
 /// though the argument may be a list. (quote (1 2 3)) -> '(1 2 3)
 pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ev, env};
+    _ = &.{ ev, env };
     try requireExactArgCount(1, args);
     return args[0];
 }
 
 /// Unquote is only useful in combination with quasiquoting, see stdQuasiQuote
 pub fn stdUnquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{env, args};
+    _ = &.{ env, args };
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
 
 /// Unquote with splicing is only useful in combination with quasiquoting, see stdQuasiQuote
 pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{env, args};
+    _ = &.{ env, args };
     try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote-splicing inside a quasiquote expression\n", .{});
     return ExprErrors.AlreadyReported;
 }
@@ -707,7 +726,7 @@ pub fn stdPow(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
 }
 
 pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ev, env, args};
+    _ = &.{ ev, env, args };
     return ast.makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
 }
 
@@ -718,7 +737,6 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     switch (expr.val) {
         ExprType.sym => return try ast.makeNumExpr(@intToFloat(f64, expr.val.sym.len)),
         ExprType.lst => {
-            std.debug.print("Converting {d} to float\n", .{expr.val.lst.items.len});
             return try ast.makeNumExpr(@intToFloat(f64, expr.val.lst.items.len));
         },
         else => {
@@ -728,7 +746,7 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     }
 }
 
-/// Convert between symbols, numbers and lists. Example: (as number (readline))
+/// Convert between symbols, numbers and lists. Example: (as number (io.read-line))
 /// Returns nil if the conversion fails
 pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
@@ -777,6 +795,28 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         try ev.printErrorFmt(&expr.src, "Invalid target type in (as): {s}. Must be number, symbol or list\n", .{target_type.val.sym});
         return &expr_atom_nil;
     }
+}
+
+/// Split symbol into a list of symbols by splitting on one or more a separators
+/// (split "a,b,c;d" ",;") => '(a b c d)
+pub fn stdSplit(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    const input = try ev.eval(env, args[0]);
+    const needle = try ev.eval(env, args[1]);
+    try requireType(ev, input, ExprType.sym);
+    try requireType(ev, needle, ExprType.sym);
+
+    const list = try ast.makeListExpr(null);
+    var it = std.mem.tokenize(u8, input.val.sym, needle.val.sym);
+    while (it.next()) |item| {
+        if (item.len == 0) {
+            try list.val.lst.append(&expr_atom_nil);
+        } else {
+            try list.val.lst.append(try ast.makeAtomByDuplicating(item));
+        }
+    }
+
+    return list;
 }
 
 pub fn stdFloor(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {

@@ -48,7 +48,6 @@ pub const Interpreter = struct {
         try instance.env.put("gensym", &intrinsics.expr_std_gensym);
         try instance.env.put("print", &intrinsics.expr_std_print);
         try instance.env.put("string", &intrinsics.expr_std_string);
-        try instance.env.put("readline", &intrinsics.expr_std_read_line);
         try instance.env.put("as", &intrinsics.expr_std_as);
         try instance.env.put("len", &intrinsics.expr_std_len);
         try instance.env.put("env", &intrinsics.expr_std_env);
@@ -69,6 +68,7 @@ pub const Interpreter = struct {
         try instance.env.put("append", &intrinsics.expr_std_append);
         try instance.env.put("eval", &intrinsics.expr_std_eval);
         try instance.env.put("eval-string", &intrinsics.expr_std_eval_string);
+        try instance.env.put("string.split", &intrinsics.expr_std_split);
         try instance.env.put("set!", &intrinsics.expr_std_set);
         try instance.env.put("unset!", &intrinsics.expr_std_unset);
         try instance.env.put("try", &intrinsics.expr_std_try);
@@ -84,6 +84,7 @@ pub const Interpreter = struct {
         try instance.env.put("io.close-file", &intrinsics.expr_std_file_close);
         try instance.env.put("io.read-line", &intrinsics.expr_std_file_read_line);
         try instance.env.put("io.write-line", &intrinsics.expr_std_file_write_line);
+        try instance.env.put("io.read-byte", &intrinsics.expr_std_file_read_byte);
 
         return instance;
     }

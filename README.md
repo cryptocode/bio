@@ -18,7 +18,7 @@ Table of Contents
          * [#t and #f](#t-and-f)
          * [#! and #value](#-and-value)
          * [typename](#typename)
-         * [number? symbol? list? bool? callable?](#number-symbol-list-bool-callable)
+         * [number? symbol? list? bool? callable? error?](#number-symbol-list-bool-callable-error)
          * [var and define](#var-and-define)
          * [set! and unset!](#set-and-unset)
          * [arithmetic functions](#arithmetic-functions)
@@ -41,7 +41,7 @@ Table of Contents
          * [begin](#begin)
          * [try](#try)
          * [error](#error)
-         * [print and readline](#print-and-readline)
+         * [print](#print)
          * [as](#as)
          * [list](#list)
          * [append](#append)
@@ -54,6 +54,7 @@ Table of Contents
          * [verbose](#verbose)
          * [math.pi and math.e](#mathpi-and-mathe)
          * [math.floor](#mathfloor)
+         * [string.split](#stringsplit)
       * [Standard library](#standard-library)
          * [car, cdr, caar, cadr, cddr, caddr, last, nth](#car-cdr-caar-cadr-cddr-caddr-last-nth)
          * [cons](#cons)
@@ -68,12 +69,12 @@ Table of Contents
          * [quicksort](#quicksort)
          * [while macro](#while-macro)
          * [each](#each)
-         * [io.read-number and io.read-string](#ioread-number-and-ioread-string)
+         * [io.read-number](#ioread-number)
          * [typename](#typename-1)
          * [time.now](#timenow)
          * [double-quote](#double-quote)
          * [inc! and dec!](#inc-and-dec)
-         * [file i/o](#file-io)
+         * [file i/o and stdin/stdout](#file-io-and-stdinstdout)
          * [math.odd? math.even? odd-items and even-items](#mathodd-matheven-odd-items-and-even-items)
          * [math.abs](#mathabs)
          * [math.pow](#mathpow)
@@ -214,7 +215,7 @@ These all return #t
 ```scheme
 (var x 5)
 (define y 5)
-(var name (readline))
+(var name (io.read-line))
 (var double (lambda (val) (* 2 val)))
 ```
 
@@ -616,18 +617,16 @@ Notice how the `try` expression propagates the error by putting `#!` as the last
 
 Errors don't have to be symbols, any expression will do.
 
-### print and readline
+### print
 
 `print` prints one or more expressions separated by a space. Combine `print` with `string` if you need to print verbatim (without spaces between expressions)
 
-`readline` reads from stdin until newline or EOF is observed.
-
 ```scheme
 (print "What's your name?")
-(var name (readline))
+(var name (io.read-line))
 
 (print "What's your age?")
-(var age (as number (readline)))
+(var age (as number (io.read-line)))
 
 (print "Hi" name (if (> age 80) "... you're quite old" ""))
 ```
@@ -643,7 +642,7 @@ The `as` function converts an expression from one type to another. If a conversi
 The target conversion is either `number`, `symbol`, or `list`.
 
 ```scheme
-(var age (as number (readline)))
+(var age (as number (io.read-line)))
 (assert (= '(5) (as list 5)))
 (as symbol mynumber)
 (set! age (as symbol age))
@@ -767,6 +766,19 @@ Returns the largest integer less than or equal to the argument.
 ```scheme
 (floor math.pi)
 3
+```
+
+### string.split
+
+Given one or more delimiters, tokenizes the input symbol and produces a list of symbols.
+
+```scheme
+(assert (= (string.split "" ",") '()))
+(assert (= (string.split "a" ",") '(a)))
+(assert (= (string.split "a,b,c" ",") '(a b c)))
+(assert (= (string.split "a,b,c," ",") '(a b c)))
+(assert (= (string.split "a,b;c," ",;") '(a b c)))
+(assert (= (string.split " " ",") (list " ")))
 ```
 
 ## Standard library
@@ -906,11 +918,11 @@ The `each` function allows for convenient iteration of lists. The first argument
 (2 4 6 8 10 12)
 ```
 
-### io.read-number and io.read-string
+### io.read-number
 
-Read number and string expressions from stdin.
+Read a number from stdin.
 
-If read-number is not a number, an `error` expression is returned.
+If input is not a number, an `error` expression is returned.
 
 ### typename
 
@@ -953,7 +965,7 @@ Renders the argument and wraps the result in double-quotes.
 
 Increments and decrements
 
-### file i/o
+### file i/o and stdin/stdout
 
 A file is opened with `io.open-file`, which takes a relative or absolute path name as an argument. The file is then closed with `io.close-file`. Currently, line oriented reading and writing is supported.
 
@@ -965,6 +977,10 @@ A file is opened with `io.open-file`, which takes a relative or absolute path na
 ```
 
 `io.read-line` returns the *error* expression "EOF" if end of the file is reached.
+
+`io.read-line` and `io.write-line` without a file argument reads and writes to stdin and stdout respectively.
+
+`io.read-byte` reads one byte at a time from a file.
 
 ### math.odd? math.even? odd-items and even-items
 
