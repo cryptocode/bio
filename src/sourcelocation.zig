@@ -4,7 +4,7 @@ const mem = @import("gc.zig");
 /// Maintains current source locations, pushing and popping from a stack as
 /// files are being imported.
 pub const SourceLocation = struct {
-    var stack: std.ArrayList(SourceLocation) = undefined;
+    pub var stack: std.ArrayList(SourceLocation) = undefined;
     var files: std.StringHashMap(void) = undefined;
 
     pub fn current() *SourceLocation {

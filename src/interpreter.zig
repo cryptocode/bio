@@ -106,6 +106,7 @@ pub const Interpreter = struct {
             ExprErrors.InvalidArgumentType => "Invalid argument type",
             ExprErrors.ExpectedNumber => "Expected a number",
             ExprErrors.UnexpectedRightParen => "Unexpected )",
+            ExprErrors.MissingRightParen => "Missing )",
             ExprErrors.SyntaxError => "Syntax error while parsing",
             ExprErrors.Eof => "End of file",
             else => "Unknown",
@@ -115,12 +116,11 @@ pub const Interpreter = struct {
 
     /// Print a formatted error message, prefixed with source location
     pub fn printErrorFmt(self: *Interpreter, src_loc: *SourceLocation, comptime fmt: []const u8, args: anytype) !void {
-        if (fmt.len > 0) {
-            try std.io.getStdOut().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, std.math.max(1, src_loc.line) });
-            try std.io.getStdOut().writer().print(fmt, args);
-        } else {
-            try std.io.getStdOut().writer().print("ERROR: {s}, line {d}\n", .{ src_loc.file, std.math.max(1, src_loc.line) });
-        }
+        try std.io.getStdOut().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, std.math.max(1, src_loc.line) });
+        try std.io.getStdOut().writer().print(fmt, args);
+        // for (SourceLocation.stack.items) |loc| {
+        //     try std.io.getStdOut().writer().print("    {s}:{d}", .{loc.file, std.math.max(1, loc.line)});
+        // }
         self.has_errors = true;
     }
 
@@ -185,7 +185,7 @@ pub const Interpreter = struct {
 
                         const else_branch = args_slice[args_slice.len - 1];
                         if (else_branch.val != ExprType.lst or else_branch.val.lst.items.len != 1) {
-                            try self.printErrorFmt(&e.src, "Last expression in cond must be a single-expression list", .{});
+                            try self.printErrorFmt(&e.src, "Last expression in cond must be a single-expression list\n", .{});
                             return ExprErrors.AlreadyReported;
                         }
 
@@ -237,7 +237,7 @@ pub const Interpreter = struct {
                     switch (kind) {
                         ExprValue.env => |target_env| {
                             if (args_slice.len == 0 or (args_slice[0].val != ExprType.sym and args_slice[0].val != ExprType.lst)) {
-                                try self.printErrorFmt(&e.src, "Missing symbol or call in environment lookup", .{});
+                                try self.printErrorFmt(&e.src, "Missing symbol or call in environment lookup: ", .{});
                                 try args_slice[0].print();
                                 return ExprErrors.AlreadyReported;
                             }
@@ -249,7 +249,7 @@ pub const Interpreter = struct {
                             } else if (target_env.lookup(args_slice[0].val.sym, false)) |match| {
                                 return match;
                             } else {
-                                try self.printErrorFmt(&e.src, "Symbol not found in given environment: {s} ", .{args_slice[0].val.sym});
+                                try self.printErrorFmt(&e.src, "Symbol not found in given environment: {s}\n", .{args_slice[0].val.sym});
                                 return ExprErrors.AlreadyReported;
                             }
                         },
@@ -342,7 +342,7 @@ pub const Interpreter = struct {
                             }
                         },
                         else => {
-                            try self.printErrorFmt(&e.src, "Not a function or macro:\n", .{});
+                            try self.printErrorFmt(&e.src, "Not a function or macro: ", .{});
                             try list.items[0].print();
                             return &intrinsics.expr_atom_nil;
                         },
@@ -429,22 +429,22 @@ pub const Interpreter = struct {
         var balance: isize = 0;
         var expr = std.ArrayList(u8).init(mem.allocator);
         defer expr.deinit();
-        var exprWriter = expr.writer();
+        var expr_writer = expr.writer();
 
         try linereader.linenoise_wrapper.printPrompt(prompt);
-        line_reader: while (true) {
+        reader_loop: while (true) {
             if (reader.readUntilDelimiterOrEofAlloc(mem.allocator, '\n', 2048)) |maybe| {
                 if (maybe) |line| {
                     defer mem.allocator.free(line);
                     SourceLocation.current().line += 1;
 
-                    var onlySeenWhitespace = true;
+                    var only_seen_ws = true;
                     var inside_string = false;
                     for (line) |char| {
-                        if (char == ';' and onlySeenWhitespace) {
-                            continue :line_reader;
+                        if (char == ';' and only_seen_ws) {
+                            continue :reader_loop;
                         }
-                        onlySeenWhitespace = onlySeenWhitespace and std.ascii.isSpace(char);
+                        only_seen_ws = only_seen_ws and std.ascii.isSpace(char);
 
                         if (char == '"') {
                             inside_string = !inside_string;
@@ -460,11 +460,14 @@ pub const Interpreter = struct {
                     }
 
                     if (expr.items.len > 0) {
-                        try exprWriter.writeAll(" ");
+                        try expr_writer.writeAll(" ");
                     }
 
-                    try exprWriter.writeAll(line);
+                    try expr_writer.writeAll(line);
                 } else {
+                    if (balance > 0 and prompt.len == 0) {
+                        return ExprErrors.MissingRightParen;
+                    }
                     return null;
                 }
             } else |err| {
@@ -479,6 +482,7 @@ pub const Interpreter = struct {
         }
 
         if (balance < 0) {
+            std.debug.print("Missing )\n", .{});
             return ExprErrors.UnexpectedRightParen;
         }
 

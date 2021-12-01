@@ -5,7 +5,7 @@ const mem = @import("gc.zig");
 const sourcelocation = @import("sourcelocation.zig");
 const SourceLocation = sourcelocation.SourceLocation;
 
-pub const ExprErrors = error{ AlreadyReported, UnexpectedRightParen, ExpectedNumber, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof };
+pub const ExprErrors = error{ AlreadyReported, MissingRightParen, UnexpectedRightParen, ExpectedNumber, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof };
 pub const ExprType = enum { sym, num, lst, lam, mac, fun, env, err, any };
 pub const ExprValue = union(ExprType) {
     sym: []const u8,

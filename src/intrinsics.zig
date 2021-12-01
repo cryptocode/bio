@@ -243,7 +243,8 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
                     break;
                 }
             } else |err| {
-                try ev.printErrorFmt(&filename_expr.src, "(import) could not read expression: {}\n", .{err});
+                try ev.printErrorFmt(SourceLocation.current(), "", .{});
+                try ev.printError(err);
                 break;
             }
         }
@@ -453,6 +454,7 @@ fn boolExpr(val: bool) *Expr {
 
 /// Check for equality. If the order operation fails, such as incompatiable types, false is returned.
 pub fn stdEq(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
     return boolExpr((order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) }) catch return &expr_atom_false) == std.math.Order.eq);
 }
 
@@ -731,9 +733,11 @@ pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
 }
 
 /// Returns the length of a list or symbol, otherwise nil
+/// If input is nil, 0 is returned
 pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const expr = try ev.eval(env, args[0]);
+    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@intToFloat(f64, 0));
     switch (expr.val) {
         ExprType.sym => return try ast.makeNumExpr(@intToFloat(f64, expr.val.sym.len)),
         ExprType.lst => {
