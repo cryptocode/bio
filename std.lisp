@@ -131,6 +131,19 @@
     )
 ))
 
+(var each-pair (lambda (lst fn)
+    (if (not (nil? (car lst)))
+        (begin
+            (fn (car lst) (car (cdr lst)))
+            (if (not (nil? (cdr (cdr lst))))
+                (each-pair (cdr (cdr lst)) fn)
+                nil
+            )
+        )
+        nil
+    )
+))
+
 ; Creates a new list containing the unfiltered expressions of the input list
 ; (filter (lambda (x) (< x 5)) '(3 9 5 8 2 4 7))) => (3 2 4)
 (var filter (lambda (lst pred)
