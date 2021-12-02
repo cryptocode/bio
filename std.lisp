@@ -40,19 +40,24 @@
 (var > (lambda (x y) (if (= (order x y) 1) #t #f)))
 (var != (lambda (x y) (not (= x y))))
 (var not (lambda (x) (if x #f #t)))
+(var += (macro (/expr1 &rest /expr2) `(set! ,/expr1 (+ ,/expr1 ,@/expr2))))
+(var -= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (- ,/expr1 ,@/expr2))))
+(var *= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (* ,/expr1 ,@/expr2))))
+(var /= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (/ ,/expr1 ,@/expr2))))
 
-; Logical or with shortcut evaluation
-(var or (macro (expr1 expr2)
-    `(if ,expr1
+; Logical or with shortcut evaluation. Identifiers starting with / is
+; a convention for macro parameters to help avoid name clashes.
+(var or (macro (/expr1 /expr2)
+    `(if ,/expr1
         #t
-        (if ,expr2 #t #f)
+        (if ,/expr2 #t #f)
     )
 ))
 
 ; Logical and with shortcut evaluation
-(var and (macro (expr1 expr2)
-    `(if ,expr1
-        (if ,expr2 #t #f)
+(var and (macro (/expr1 /expr2)
+    `(if ,/expr1
+        (if ,/expr2 #t #f)
         #f
     )
 ))
@@ -65,26 +70,26 @@
 ;       => 30
 ;
 ; The let body can have multiple expressions without using (begin) due to the &rest sentinel
-(var let (macro (binding-pairs &rest body)
+(var let (macro (/binding-pairs &rest /body)
     (var params '())
     (var args '())
 
-    (each binding-pairs (lambda (item)
+    (each /binding-pairs (lambda (item)
         (set! params (append params (list (car item))))
         (set! args (append args (list (eval (cadr item)))))
     ))
 
-    `((lambda (,@params) ,@body) ,@args)
+    `((lambda (,@params) ,@/body) ,@args)
 ))
 
 ; The while macro expands to a tail-recursive lambda
-(var while (macro (predicate &rest body)
+(var while (macro (/predicate &rest /body)
     (var loop-name (gensym))
     `(begin
         (var ,loop-name (lambda ()
-            (if ,predicate
+            (if ,/predicate
                 (begin
-                    ,@body
+                    ,@/body
                     (,loop-name)
                 )
             )
@@ -94,15 +99,15 @@
 ))
 
 ; The n-times macro expands to a tail-recursive lambda
-(var n-times (macro (n &rest body)
+(var n-times (macro (/n &rest /body)
     (var loop-name (gensym))
     (var countdown-var (gensym))
     `(begin
-        (var ,countdown-var ,n)
+        (var ,countdown-var ,/n)
         (var ,loop-name (lambda ()
             (if (> ,countdown-var 0)
                 (begin
-                    ,@body
+                    ,@/body
                     (dec! ,countdown-var)
                     (,loop-name)
                 )
@@ -217,13 +222,13 @@
 ))
 
 ; Increment variable
-(var inc! (macro (variable)
-    `(set! ,variable (+ ,variable 1))
+(var inc! (macro (/var)
+    `(set! ,/var (+ ,/var 1))
 ))
 
 ; Decrement variable
-(var dec! (macro (variable)
-    `(set! ,variable (- ,variable 1))
+(var dec! (macro (/var)
+    `(set! ,/var (- ,/var 1))
 ))
 
 (var math.mod (lambda (num div) (- num (* div (math.floor (/ num div))))))

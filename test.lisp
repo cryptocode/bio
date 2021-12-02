@@ -67,6 +67,16 @@
     (assert (not (and #t #f)))
     (assert (not (and #f #t)))
 
+    ; Arithmetic
+    (assert (= (- 5 1) 4))
+    (assert (= (+ 1 2 3) 6))
+    (assert (= (* 1 2 3) 6))
+    (assert (= (/ 6 2 2) 1.5))
+    (let ((a 1)) (assert (= (+= a 1 2 3) 7)))
+    (let ((a 9)) (assert (= (-= a 1 2 3) 3)))
+    (let ((a 1)) (assert (= (*= a 1 2 3) 6)))
+    (let ((a 9)) (assert (= (/= a 3 2) 1.5)))
+
     ; Ordering
     (assert (= -1 (order '() '(1))))
     (assert (=  1 (order '(1) '())))
