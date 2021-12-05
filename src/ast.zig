@@ -117,7 +117,7 @@ pub const Env = struct {
         self.map.deinit();
     }
 
-    /// Put symbol/value by first interning the symbol
+    /// Put symbol/value, duplicating the key
     pub fn put(self: *Env, key: []const u8, val: *Expr) !void {
         const binding_expr = try makeAtomByDuplicating(key);
         try self.putWithSymbol(binding_expr, val);
@@ -181,9 +181,10 @@ pub fn makeAtomAndTakeOwnership(literal: []const u8) anyerror!*Expr {
 /// Make and return a potentially interned atom (symbol or number)
 fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*Expr {
     const intrinsic_atoms: []const *Expr = &.{
-        &intrinsics.expr_atom_quasi_quote, &intrinsics.expr_atom_quote, &intrinsics.expr_atom_unquote,   &intrinsics.expr_atom_unquote_splicing, &intrinsics.expr_atom_list,
-        &intrinsics.expr_atom_if,          &intrinsics.expr_atom_cond,  &intrinsics.expr_atom_begin,     &intrinsics.expr_atom_nil,              &intrinsics.expr_atom_rest,
-        &intrinsics.expr_atom_true,        &intrinsics.expr_atom_false, &intrinsics.expr_atom_last_eval, &intrinsics.expr_atom_last_try_err,     &intrinsics.expr_atom_last_try_value,
+        &intrinsics.expr_atom_quasi_quote,    &intrinsics.expr_atom_quote, &intrinsics.expr_atom_unquote, &intrinsics.expr_atom_unquote_splicing, &intrinsics.expr_atom_list,
+        &intrinsics.expr_atom_if,             &intrinsics.expr_atom_cond,  &intrinsics.expr_atom_begin,   &intrinsics.expr_atom_nil,              &intrinsics.expr_atom_rest,
+        &intrinsics.expr_atom_mut,            &intrinsics.expr_atom_true,  &intrinsics.expr_atom_false,   &intrinsics.expr_atom_last_eval,        &intrinsics.expr_atom_last_try_err,
+        &intrinsics.expr_atom_last_try_value, &intrinsics.expr_atom_break,
     };
 
     // Lazy initialization of the interned intrinsics map

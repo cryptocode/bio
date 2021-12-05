@@ -13,13 +13,14 @@
 (var cddr (lambda (x) (cdr (cdr x))))
 (var caddr (lambda (x) (car (cddr x))))
 
+(var nth-orelse (lambda (index list default)
+    (var item (item-at index list))
+    (if item item default)
+))
+
 ; The n'th item in a list, or nil if out of bounds
 (var nth (lambda (index list)
-    (var item (range list index (+ index 1)))
-    (if (nil? item)
-        nil
-        (car item)
-    )
+    (item-at index list)
 ))
 
 ; Negative range indices means "from the end"
@@ -29,6 +30,18 @@
 ;     (cons 'a '(b c))     -> '(a b c)
 ;     (cons '(a b) '(c d)) -> '((a b) c d)
 (var cons (lambda (new existing-list) (append (list new) existing-list)))
+
+; Interpret a list as digits in a binary number, convert to number. Any non-zero
+; list item is interpreted as 1 so '(12 0 1 0 0 23) is 1 0 1 0 0 1 = 41
+(var bitset-to-number (lambda (list)
+    (var res 0)
+    (n-times-with (len list) (lambda (n)
+        (var index (- 0 (+ n 1)))
+        (var item (range list index))
+        (if (> (car item) 0) (+= res (math.pow 2 n)))
+    ))
+    res
+))
 
 (var nil? (lambda (x) (= nil x)))
 (var atom? (lambda (x) (if (or (number? x) (symbol? x)) #t #f)))
@@ -117,17 +130,25 @@
     )
 ))
 
-; Loop over each list item and call the supplied function with that item as an argument
+(var n-times-with (lambda (times fn)
+    (var count 0)
+    (loop (list 0 times)
+        (fn count)
+        (+= count 1)
+    )
+))
+
+; Replaces an item in a list at a given index, returning a new list.
+; If the index is past the end of the list, a new item is appended.
+(var replace-or-append (λ (list index value)
+    (item-set index list value)
+    list
+    ;(append (range list 0 index) value (range list (+ index 1)))
+))
+
 (var each (lambda (lst fn)
-    (if (not (nil? (car lst)))
-        (begin
-            (fn (car lst))
-            (if (not (nil? (cdr lst)))
-                (each (cdr lst) fn)
-                nil
-            )
-        )
-        nil
+    (loop 'index (list 0 (len lst))
+        (fn (item-at index lst))
     )
 ))
 
@@ -328,10 +349,10 @@
 ; Given an expression, return the type name
 (var typename (lambda (x)
     (cond
-        ((bool? x) "bool")
-        ((symbol? x) "symbol")
-        ((number? x) "number")
         ((list? x) "list")
+        ((bool? x) "bool")
+        ((number? x) "number")
+        ((symbol? x) "symbol")
         ((callable? x) "function")
         ("unknown")
     )

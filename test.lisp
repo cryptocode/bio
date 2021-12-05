@@ -23,8 +23,14 @@
     (assert (= '(+ 2 5) (eval '(list '+ 2 a))))
     (assert (= 7 (math.abs -7)))
     (assert (= 3 (nth 2 nums)))
+    (assert (= 100 (nth-orelse 50 nums 100)))
     (assert (nil? (nth 100 nums)))
     (assert (nil? (nth -1 nums)))
+    (assert (= 1 (math.pow 2 0)))
+    (assert (= 2 (math.pow 2 1)))
+    (assert (= 4 (math.pow 2 2)))
+    (assert (= 13 (bitset-to-number '(1 1 0 1))))
+    (assert (= 13 (bitset-to-number '(7 8 0 9))))
 
     (assert (= '(a 5) `(a ,a)))
     (assert (= '() nil))
@@ -43,6 +49,8 @@
     (assert (= '(1 2 3 4) (append (list 1 2) '(3 4))))
     (assert (= '(a b 1 2 3) (append 'a 'b 1 2 (+ 1 2))))
     (assert (= '(a b c d e f (g h)) (append '(a b c) '(d e f (g h)))))
+    (assert (= '(1 9 3 4) (replace-or-append '(1 2 3 4) 1 9)))
+    (assert (= '(1 2 3 4 9) (replace-or-append '(1 2 3 4) 4 9)))
 
     (assert (= 'a (range letters)))
     (assert (= '(e) (range letters -1)))
@@ -57,6 +65,28 @@
     (assert (= '(c d) (cadr pairlist)))
     (assert (= '((e f)) (cddr pairlist)))
     (assert (= '(e f) (caddr pairlist)))
+
+    ; Indexed lookup
+    (assert (= 2 (item-at 1 '(1 2 3))))
+    (assert (= nil (item-at 100 '(1 2 3))))
+    (assert (= nil (item-at -1 '(1 2 3))))
+
+    ; In-place mutation
+    (var inplace '(100 2 3))
+    (var old (item-set 0 inplace 1))
+    (assert (= '(1 2 3) inplace))
+    (assert (= old 100))
+
+    (item-set 4 inplace 4)
+    (assert (= '(1 2 3 4) inplace))
+
+    (item-set -1 inplace 13)
+    (assert (= '(13 1 2 3 4) inplace))
+
+    ; In-place append modifies the first argument directly rather than making a new list
+    (set! inplace '(1 2 3))
+    (append &mut inplace 4)
+    (assert (= '(1 2 3 4) inplace))
 
     ; Logical functions
     (assert (or #f #t))
@@ -150,6 +180,10 @@
     (n-times 5 (dec! countdown))
     (assert (= countdown 0))
 
+    (var sum 0)
+    (n-times-with 5 (λ (index) (+= sum index)))
+    (assert (= sum 10))
+
     ; Test (each)
     (let ((i 0) (bag-of-numbers '(1 2 3 4 5)))
         (each bag-of-numbers (lambda (num)
@@ -193,7 +227,29 @@
     (assert (= (io.read-byte file) ";"))
     (io.close-file file)
 
+    ; Var without value is nil by default
+    (var novalue)
+    (assert (= novalue nil))
+
+    ; Test 0..10
+    (var loop-count 0)
+    (loop '(0 10) (+= loop-count 1))
+    (assert (= loop-count 10))
+
+    ; Test &break
+    (set! loop-count 0)
+    (loop '(0 10) (+= loop-count 1) (if (= loop-count 5) &break nil))
+    (assert (= loop-count 5))
+
+    ; Test &break
+    (set! loop-count 0)
+    (loop '() (+= loop-count 1) (if (= loop-count 100) &break nil))
+    (assert (= loop-count 100))
+
     (print "Tests passed\n")
+
+    ;; (var iterate-me '(1 2 3))
+    ;; (iterate iterate-me (λ (val, idx) (print idx " -> " val "\n")))
 
     ; You can load and use this file as a module with:
     ;   (var mod-test (load "test.lisp"))

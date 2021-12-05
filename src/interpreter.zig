@@ -17,6 +17,7 @@ pub const Interpreter = struct {
     gensym_seq: u64 = 0,
     verbose: bool = false,
     has_errors: bool = false,
+    break_seen: bool = false,
 
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
@@ -32,6 +33,7 @@ pub const Interpreter = struct {
         try instance.env.put("#t", &intrinsics.expr_atom_true);
         try instance.env.put("#?", &intrinsics.expr_atom_nil);
         try instance.env.put("#!", &intrinsics.expr_atom_nil);
+        try instance.env.put("&break", &intrinsics.expr_atom_break);
         try instance.env.put("nil", &intrinsics.expr_atom_nil);
         try instance.env.put("math.pi", &intrinsics.expr_std_math_pi);
         try instance.env.put("math.e", &intrinsics.expr_std_math_e);
@@ -58,6 +60,8 @@ pub const Interpreter = struct {
         try instance.env.put("unquote-splicing", &intrinsics.expr_std_unquote_splicing);
         try instance.env.put("double-quote", &intrinsics.expr_std_double_quote);
         try instance.env.put("range", &intrinsics.expr_std_range);
+        try instance.env.put("item-at", &intrinsics.expr_std_item_at);
+        try instance.env.put("item-set", &intrinsics.expr_std_item_set);
         try instance.env.put("define", &intrinsics.expr_std_define);
         try instance.env.put("var", &intrinsics.expr_std_define);
         try instance.env.put("lambda", &intrinsics.expr_std_lambda);
@@ -65,6 +69,7 @@ pub const Interpreter = struct {
         try instance.env.put("λ", &intrinsics.expr_std_lambda);
         try instance.env.put("apply", &intrinsics.expr_std_apply);
         try instance.env.put("list", &intrinsics.expr_std_list);
+        try instance.env.put("loop", &intrinsics.expr_std_loop);
         try instance.env.put("append", &intrinsics.expr_std_append);
         try instance.env.put("eval", &intrinsics.expr_std_eval);
         try instance.env.put("eval-string", &intrinsics.expr_std_eval_string);
@@ -153,6 +158,10 @@ pub const Interpreter = struct {
 
         tailcall_optimization_loop: while (maybe_next) |e| {
             if (self.exit_code) |_| {
+                return &intrinsics.expr_atom_nil;
+            }
+            if (e == &intrinsics.expr_atom_break) {
+                self.break_seen = true;
                 return &intrinsics.expr_atom_nil;
             }
             switch (e.val) {

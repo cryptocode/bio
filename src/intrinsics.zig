@@ -27,6 +27,8 @@ pub var expr_atom_false = Expr{ .val = ExprValue{ .sym = "#f" } };
 pub var expr_atom_true = Expr{ .val = ExprValue{ .sym = "#t" } };
 pub var expr_atom_nil = Expr{ .val = ExprValue{ .sym = "nil" } };
 pub var expr_atom_rest = Expr{ .val = ExprValue{ .sym = "&rest" } };
+pub var expr_atom_mut = Expr{ .val = ExprValue{ .sym = "&mut" } };
+pub var expr_atom_break = Expr{ .val = ExprValue{ .sym = "&break" } };
 pub var expr_std_math_pi = Expr{ .val = ExprValue{ .num = std.math.pi } };
 pub var expr_std_math_e = Expr{ .val = ExprValue{ .num = std.math.e } };
 pub var expr_std_import = Expr{ .val = ExprValue{ .fun = stdImport } };
@@ -46,6 +48,8 @@ pub var expr_std_quasi_quote = Expr{ .val = ExprValue{ .fun = stdQuasiQuote } };
 pub var expr_std_double_quote = Expr{ .val = ExprValue{ .fun = stdDoubleQuote } };
 pub var expr_std_len = Expr{ .val = ExprValue{ .fun = stdLen } };
 pub var expr_std_range = Expr{ .val = ExprValue{ .fun = stdRange } };
+pub var expr_std_item_at = Expr{ .val = ExprValue{ .fun = stdItemAt } };
+pub var expr_std_item_set = Expr{ .val = ExprValue{ .fun = stdItemSet } };
 pub var expr_std_string = Expr{ .val = ExprValue{ .fun = stdString } };
 pub var expr_std_print = Expr{ .val = ExprValue{ .fun = stdPrint } };
 pub var expr_std_env = Expr{ .val = ExprValue{ .fun = stdEnv } };
@@ -57,6 +61,7 @@ pub var expr_std_eval_string = Expr{ .val = ExprValue{ .fun = stdEvalString } };
 pub var expr_std_eval = Expr{ .val = ExprValue{ .fun = stdEval } };
 pub var expr_std_apply = Expr{ .val = ExprValue{ .fun = stdApply } };
 pub var expr_std_list = Expr{ .val = ExprValue{ .fun = stdList } };
+pub var expr_std_loop = Expr{ .val = ExprValue{ .fun = stdLoop } };
 pub var expr_std_split = Expr{ .val = ExprValue{ .fun = stdSplit } };
 pub var expr_std_append = Expr{ .val = ExprValue{ .fun = stdAppend } };
 pub var expr_std_unset = Expr{ .val = ExprValue{ .fun = stdUnset } };
@@ -611,13 +616,54 @@ pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     return res;
 }
 
+/// Implements (item-at list index)
+/// If index is out of bounds, nil is returned
+pub fn stdItemAt(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    const indexArg = try ev.eval(env, args[0]);
+    const listArg = try ev.eval(env, args[1]);
+    try requireType(ev, indexArg, ExprType.num);
+    try requireType(ev, listArg, ExprType.lst);
+
+    const index = @floatToInt(isize, indexArg.val.num);
+    const list = &listArg.val.lst;
+    return if (index >= 0 and index < list.items.len) list.items[@intCast(usize, index)] else &expr_atom_nil;
+}
+
+/// Implements list mutation. If the index is out of bounds, the item is appended or prepended accordingly.
+/// The previous value is returned, or nil if index was out of bounds.
+/// (item-set 4 list newitem)
+pub fn stdItemSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(3, args);
+    const indexArg = try ev.eval(env, args[0]);
+    const listArg = try ev.eval(env, args[1]);
+    const newItem = try ev.eval(env, args[2]);
+    try requireType(ev, indexArg, ExprType.num);
+    try requireType(ev, listArg, ExprType.lst);
+
+    // Index may be negative to prepend, so we use isize
+    const index = @floatToInt(isize, indexArg.val.num);
+    var list = &listArg.val.lst;
+    if (index >= 0 and index < list.items.len) {
+        var old = list.items[@intCast(usize, index)];
+        list.items[@intCast(usize, index)] = newItem;
+        return old;
+    } else if (index >= list.items.len) {
+        try list.append(newItem);
+        return &expr_atom_nil;
+    } else {
+        try list.insert(0, newItem);
+        return &expr_atom_nil;
+    }
+}
+
 /// Implements (range list start? end?) where negative indices are end-relative
 /// If both start and end are missing, return the first element as in (car list)
 pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(1, args);
     const listArg = try ev.eval(env, args[0]);
     try requireType(ev, listArg, ExprType.lst);
-    const list = listArg.val.lst;
+    const list = &listArg.val.lst;
     const size = @intCast(isize, list.items.len);
 
     if (args.len > 1) {
@@ -720,11 +766,13 @@ pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return ast.makeNumExpr(res);
 }
 
-pub fn stdPow(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn stdPow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
-    try requireType(ev, args[0], ExprType.num);
-    try requireType(ev, args[1], ExprType.num);
-    return ast.makeNumExpr(std.math.pow(f64, args[0].val.num, args[1].val.num));
+    const base = try ev.eval(env, args[0]);
+    const exp = try ev.eval(env, args[1]);
+    try requireType(ev, base, ExprType.num);
+    try requireType(ev, exp, ExprType.num);
+    return ast.makeNumExpr(std.math.pow(f64, base.val.num, exp.val.num));
 }
 
 pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
@@ -928,39 +976,135 @@ pub fn stdList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
     return list;
 }
 
-/// Creates a new list and populates it with the arguments. If any arguments are
-/// lists, their elements are spliced into the result list. nil arguments are ignored.
-/// (append '(1 2) '(3 4)) -> (1 2 3 4)
-pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var list = try ast.makeListExpr(null);
-    for (args) |arg| {
-        const evaled = try ev.eval(env, arg);
-        if (evaled.val == ExprType.lst) {
-            for (evaled.val.lst.items) |item| {
-                try list.val.lst.append(item);
-            }
-        } else {
-            const expr = try ev.eval(env, arg);
-            if (expr != &expr_atom_nil) {
-                try list.val.lst.append(expr);
+/// Loop from n to m or until &break is encountered
+/// (loop '(0 9) body goes here) -> loops 10 times
+/// (loop '(9 0) body goes here) -> loops 10 times
+/// (loop idx '(9 0) body goes here) -> loops 10 times, current iteration count goes into the idx variable
+/// (loop '() body goes here (if cond &break)) -> loops until &break is encountered
+pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireMinimumArgCount(2, args);
+    // loop_arg1 is either a loop index variable name (a symbol we don't look up), or the criteria list
+    // If the first, then use stdDefine, i.e same as (var idx 0)
+    var loop_arg1 = try ev.eval(env, args[0]);
+    var critera: ?*Expr = null;
+    var index_variable: ?*Expr = null;
+
+    if (loop_arg1.val == ExprType.lst) {
+        critera = try ev.eval(env, args[0]);
+    } else if (loop_arg1.val == ExprType.sym) {
+        var num_expr = try ast.makeNumExpr(0);
+        index_variable = try putEnv(ev, env, &.{ loop_arg1, num_expr }, true);
+
+        critera = try ev.eval(env, args[1]);
+        try requireType(ev, critera.?, ExprType.lst);
+    } else {
+        return ExprErrors.InvalidArgumentType;
+    }
+
+    // Criteria is a list of 2 items, giving start and stop indices, or an empty list for infinite loops
+    if (critera.?.val.lst.items.len > 0) try requireMinimumArgCount(2, critera.?.val.lst.items);
+
+    var start: f64 = 0;
+    var end: f64 = 0;
+    var infinite = true;
+
+    if (critera.?.val.lst.items.len > 0) {
+        infinite = false;
+        try requireMinimumArgCount(2, critera.?.val.lst.items);
+        var first = try ev.eval(env, critera.?.val.lst.items[0]);
+        var second = try ev.eval(env, critera.?.val.lst.items[1]);
+        try requireType(ev, first, ExprType.num);
+        try requireType(ev, second, ExprType.num);
+        start = std.math.min(first.val.num, second.val.num);
+        end = std.math.max(first.val.num, second.val.num);
+    }
+
+    var last: *Expr = &expr_atom_nil;
+    done: while (infinite or (start < end)) : (start += 1) {
+        // Evaluate loop body
+        for (args[1..]) |item| {
+            last = try ev.eval(env, item);
+            if (ev.break_seen) {
+                ev.break_seen = false;
+                break :done;
             }
         }
+
+        if (index_variable) |iv| {
+            iv.val.num += 1;
+        }
     }
-    return list;
+
+    return last;
+}
+
+/// Creates a new list, or updates an existing one if used with &mut, and populates it with the arguments. 
+/// If any arguments are lists, their elements are spliced into the result list. nil arguments are ignored.
+/// (append '(1 2) '(3 4)) -> (1 2 3 4)
+/// (append '(1 2 3) '4) -> (1 2 3 4)
+/// (append &mut mylist '(3 4))
+pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireMinimumArgCount(2, args);
+
+    const Handler = struct {
+        pub fn handle(ip: *Interpreter, environment: *Env, list: *Expr, arg: *Expr) !void {
+            const evaled = try ip.eval(environment, arg);
+            if (evaled.val == ExprType.lst) {
+                for (evaled.val.lst.items) |item| {
+                    try list.val.lst.append(item);
+                }
+            } else {
+                const expr = try ip.eval(environment, arg);
+                if (expr != &expr_atom_nil) {
+                    try list.val.lst.append(expr);
+                }
+            }
+        }
+    };
+
+    var target_list: ?*Expr = null;
+    var start_index: usize = 0;
+    if (args[0] == &expr_atom_mut) {
+        target_list = try ev.eval(env, args[1]);
+        if (target_list.?.val == ExprType.lst) {
+            start_index = 2;
+        } else {
+            target_list = try ast.makeListExpr(null);
+            start_index = 1;
+        }
+    } else {
+        target_list = try ast.makeListExpr(null);
+    }
+
+    for (args[start_index..]) |arg| {
+        try Handler.handle(ev, env, target_list.?, arg);
+    }
+    return target_list.?;
+}
+
+/// Put a variable into the given environment. If the symbol is already in the environment, the
+/// `allow_redefinition` flag decides between overwritting and emitting an error.
+fn putEnv(ev: *Interpreter, env: *Env, args: []const *Expr, allow_redefinition: bool) anyerror!*Expr {
+    if (env.lookup(args[0].val.sym, false) != null and !allow_redefinition) {
+        try ev.printErrorFmt(&args[0].src, "{s} is already defined\n", .{args[0].val.sym});
+        return ExprErrors.AlreadyReported;
+    }
+    if (args.len > 1) {
+        var value = try ev.eval(env, args[1]);
+        try env.putWithSymbol(args[0], value);
+        return value;
+    } else {
+        try env.putWithSymbol(args[0], &expr_atom_nil);
+        return &expr_atom_nil;
+    }
 }
 
 /// Adds a new binding to the current environment
 pub fn stdDefine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    try requireExactArgCount(2, args);
+    try requireMinimumArgCount(1, args);
     try requireType(ev, args[0], ExprType.sym);
 
-    if (env.lookup(args[0].val.sym, false) != null) {
-        try ev.printErrorFmt(&args[0].src, "{s} is already defined\n", .{args[0].val.sym});
-        return ExprErrors.AlreadyReported;
-    }
-    var value = try ev.eval(env, args[1]);
-    try env.putWithSymbol(args[0], value);
-    return value;
+    return try putEnv(ev, env, args, false);
 }
 
 /// Replace binding
