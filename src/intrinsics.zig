@@ -79,6 +79,7 @@ pub var expr_std_as = Expr{ .val = ExprValue{ .fun = stdAs } };
 pub var expr_std_order = Expr{ .val = ExprValue{ .fun = stdOrder } };
 pub var expr_std_eq = Expr{ .val = ExprValue{ .fun = stdEq } };
 pub var expr_std_eq_approx = Expr{ .val = ExprValue{ .fun = stdEqApprox } };
+pub var expr_std_eq_reference = Expr{ .val = ExprValue{ .fun = stdEqReference } };
 pub var expr_std_run_gc = Expr{ .val = ExprValue{ .fun = stdRunGc } };
 pub var expr_std_file_open = Expr{ .val = ExprValue{ .fun = stdFileOpen } };
 pub var expr_std_file_close = Expr{ .val = ExprValue{ .fun = stdFileClose } };
@@ -463,6 +464,14 @@ pub fn stdEq(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return boolExpr((order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) }) catch return &expr_atom_false) == std.math.Order.eq);
 }
 
+/// Returns #t if the two arguments evaluate to the exact same object
+/// This is mostly useful for debugging Bio itself
+/// (^= nil nil) -> #t
+pub fn stdEqReference(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    return boolExpr((try ev.eval(env, args[0])) == (try ev.eval(env, args[1])));
+}
+
 /// Compare floats with a small relative epsilon comparison. An optional third argument overrides the tolerance.
 pub fn stdEqApprox(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
@@ -542,6 +551,13 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env };
     try requireExactArgCount(1, args);
+
+    // We must make a fresh copy for quoted lists. Consider (var lst '(1 2 3)) in a lambda. If not making a copy,
+    // the list would be memoized between calls. This is not a problem for (list 1 2 3) since the list function
+    // per definition creates a new list on every evaluation.
+    if (args[0].val == ExprType.lst) {
+        return try ast.makeListExpr(args[0].val.lst.items);
+    }
     return args[0];
 }
 

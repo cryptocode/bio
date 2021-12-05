@@ -248,9 +248,6 @@
 
     (print "Tests passed\n")
 
-    ;; (var iterate-me '(1 2 3))
-    ;; (iterate iterate-me (λ (val, idx) (print idx " -> " val "\n")))
-
     ; You can load and use this file as a module with:
     ;   (var mod-test (load "test.lisp"))
     ;   (print "Module name   :" (. mod-test module-name))

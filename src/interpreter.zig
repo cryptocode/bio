@@ -84,6 +84,7 @@ pub const Interpreter = struct {
         try instance.env.put("/", &intrinsics.expr_std_div);
         try instance.env.put("=", &intrinsics.expr_std_eq);
         try instance.env.put("~=", &intrinsics.expr_std_eq_approx);
+        try instance.env.put("^=", &intrinsics.expr_std_eq_reference);
         try instance.env.put("order", &intrinsics.expr_std_order);
         try instance.env.put("io.open-file", &intrinsics.expr_std_file_open);
         try instance.env.put("io.close-file", &intrinsics.expr_std_file_close);
@@ -274,6 +275,7 @@ pub const Interpreter = struct {
 
                         // Evaluate a previously defined lambda or macro
                         ExprValue.lam, ExprValue.mac => |fun| {
+                            try intrinsics.requireType(self, fun.items[0], ExprType.lst);
                             const parent_env = if (kind == ExprType.lam) func.env else env;
                             const kind_str = if (kind == ExprType.lam) "lambda" else "macro";
 
