@@ -43,6 +43,26 @@
     res
 ))
 
+(var listof (λ (value count)
+    (var list '())
+    (loop 'idx '(0 count) (item-set idx list value))
+    list
+))
+
+; Update an item in-place by applying the given operation and operand
+(var item-apply! (λ (index list op operand)
+    (item-set
+        index
+        list
+        (op (item-at index list) operand)
+    )
+))
+
+; Copy a list
+(var copy (λ (original-list)
+    (eval `(list ,@original-list))
+))
+
 (var nil? (lambda (x) (= nil x)))
 (var atom? (lambda (x) (if (or (number? x) (symbol? x)) #t #f)))
 (var bool? (lambda (x) (if (or (= #t x) (= #f x)) #t #f)))
@@ -88,8 +108,8 @@
     (var args '())
 
     (each /binding-pairs (lambda (item)
-        (set! params (append params (list (car item))))
-        (set! args (append args (list (eval (cadr item)))))
+        (append &mut params (list (car item)))
+        (append &mut args (list (eval (cadr item))))
     ))
 
     `((lambda (,@params) ,@/body) ,@args)

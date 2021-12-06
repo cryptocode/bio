@@ -1004,6 +1004,7 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
     var loop_arg1 = try ev.eval(env, args[0]);
     var critera: ?*Expr = null;
     var index_variable: ?*Expr = null;
+    var index_increment: f64 = 1;
 
     if (loop_arg1.val == ExprType.lst) {
         critera = try ev.eval(env, args[0]);
@@ -1033,6 +1034,14 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
         try requireType(ev, second, ExprType.num);
         start = std.math.min(first.val.num, second.val.num);
         end = std.math.max(first.val.num, second.val.num);
+
+        // Countdown?
+        if (first.val.num > second.val.num) {
+            if (index_variable) |iv| {
+                index_increment = -1;
+                iv.val.num = end - 1;
+            }
+        }
     }
 
     var last: *Expr = &expr_atom_nil;
@@ -1047,7 +1056,7 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
         }
 
         if (index_variable) |iv| {
-            iv.val.num += 1;
+            iv.val.num += index_increment;
         }
     }
 

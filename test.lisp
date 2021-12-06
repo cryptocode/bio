@@ -9,6 +9,10 @@
     (var letters '(a b c d e))
     (var pairlist '((a b) (c d) (e f)))
 
+    (var updateble '(1 2 3))
+    (item-apply! 2 updateble + 10)
+    (assert (= '(1 2 13) updateble))
+
     (assert (atom? 'a))
     (assert (number? 5))
     (assert (number? a))
@@ -51,6 +55,14 @@
     (assert (= '(a b c d e f (g h)) (append '(a b c) '(d e f (g h)))))
     (assert (= '(1 9 3 4) (replace-or-append '(1 2 3 4) 1 9)))
     (assert (= '(1 2 3 4 9) (replace-or-append '(1 2 3 4) 4 9)))
+
+    (assert (= '(1 1 1 1 1) (listof 1 5)))
+
+    (var original '(1 2 3))
+    (var new-list (copy original))
+    (append &mut original '(4))
+    (assert (= '(1 2 3 4) original))
+    (assert (= '(1 2 3) new-list))
 
     (assert (= 'a (range letters)))
     (assert (= '(e) (range letters -1)))
