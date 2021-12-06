@@ -48,6 +48,7 @@ pub var expr_std_quasi_quote = Expr{ .val = ExprValue{ .fun = stdQuasiQuote } };
 pub var expr_std_double_quote = Expr{ .val = ExprValue{ .fun = stdDoubleQuote } };
 pub var expr_std_len = Expr{ .val = ExprValue{ .fun = stdLen } };
 pub var expr_std_range = Expr{ .val = ExprValue{ .fun = stdRange } };
+pub var expr_std_rotate_left = Expr{ .val = ExprValue{ .fun = stdRotateLeft } };
 pub var expr_std_item_at = Expr{ .val = ExprValue{ .fun = stdItemAt } };
 pub var expr_std_item_set = Expr{ .val = ExprValue{ .fun = stdItemSet } };
 pub var expr_std_string = Expr{ .val = ExprValue{ .fun = stdString } };
@@ -673,8 +674,22 @@ pub fn stdItemSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
     }
 }
 
+/// In-place rotate a list left by the given amount
+/// (rotate-left list amount)
+pub fn stdRotateLeft(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    const listArg = try ev.eval(env, args[0]);
+    const amountArg = try ev.eval(env, args[1]);
+    try requireType(ev, listArg, ExprType.lst);
+    try requireType(ev, amountArg, ExprType.num);
+
+    std.mem.rotate(*Expr, listArg.val.lst.items, @floatToInt(usize, amountArg.val.num));
+    return listArg;
+}
+
 /// Implements (range list start? end?) where negative indices are end-relative
 /// If both start and end are missing, return the first element as in (car list)
+/// For range results, this produces a new list
 pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(1, args);
     const listArg = try ev.eval(env, args[0]);

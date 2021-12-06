@@ -43,6 +43,20 @@
     res
 ))
 
+; In-place reverse a list; returns the list
+(var reverse! (λ (list)
+    (var length (len list))
+    (var end (math.floor (/ length 2)))
+    (loop 'i '(0 end)
+        (var tmp (item-at i list))
+        (item-set i list (item-at (- length i 1) list))
+        (item-set (- length i 1) list tmp)
+    )
+    list
+))
+
+; Creates a list containing `value`, `count` times
+; (listof 10 3) => '(10 10 10)
 (var listof (λ (value count)
     (var list '())
     (loop 'idx '(0 count) (item-set idx list value))
@@ -50,6 +64,7 @@
 ))
 
 ; Update an item in-place by applying the given operation and operand
+; (item-apply! idx list + 5)
 (var item-apply! (λ (index list op operand)
     (item-set
         index
@@ -163,7 +178,6 @@
 (var replace-or-append (λ (list index value)
     (item-set index list value)
     list
-    ;(append (range list 0 index) value (range list (+ index 1)))
 ))
 
 (var each (lambda (lst fn)

@@ -60,6 +60,7 @@ pub const Interpreter = struct {
         try instance.env.put("unquote-splicing", &intrinsics.expr_std_unquote_splicing);
         try instance.env.put("double-quote", &intrinsics.expr_std_double_quote);
         try instance.env.put("range", &intrinsics.expr_std_range);
+        try instance.env.put("rotate-left!", &intrinsics.expr_std_rotate_left);
         try instance.env.put("item-at", &intrinsics.expr_std_item_at);
         try instance.env.put("item-set", &intrinsics.expr_std_item_set);
         try instance.env.put("define", &intrinsics.expr_std_define);

@@ -12,6 +12,8 @@
     (var updateble '(1 2 3))
     (item-apply! 2 updateble + 10)
     (assert (= '(1 2 13) updateble))
+    (assert (= '(13 2 1) (reverse! updateble)))
+    (assert (= '(2 1 13) (rotate-left! updateble 1)))
 
     (assert (atom? 'a))
     (assert (number? 5))
