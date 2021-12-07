@@ -76,6 +76,9 @@ pub var expr_std_div = Expr{ .val = ExprValue{ .fun = stdDiv } };
 pub var expr_std_pow = Expr{ .val = ExprValue{ .fun = stdPow } };
 pub var expr_std_time_now = Expr{ .val = ExprValue{ .fun = stdTimeNow } };
 pub var expr_std_floor = Expr{ .val = ExprValue{ .fun = stdFloor } };
+pub var expr_std_round = Expr{ .val = ExprValue{ .fun = stdRound } };
+pub var expr_std_min = Expr{ .val = ExprValue{ .fun = stdMin } };
+pub var expr_std_max = Expr{ .val = ExprValue{ .fun = stdMax } };
 pub var expr_std_as = Expr{ .val = ExprValue{ .fun = stdAs } };
 pub var expr_std_order = Expr{ .val = ExprValue{ .fun = stdOrder } };
 pub var expr_std_eq = Expr{ .val = ExprValue{ .fun = stdEq } };
@@ -907,6 +910,38 @@ pub fn stdFloor(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     const arg = try ev.eval(env, args[0]);
     try requireType(ev, arg, ExprType.num);
     return ast.makeNumExpr(@floor(arg.val.num));
+}
+
+pub fn stdRound(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
+    const arg = try ev.eval(env, args[0]);
+    try requireType(ev, arg, ExprType.num);
+    return ast.makeNumExpr(@round(arg.val.num));
+}
+
+pub fn minMax(ev: *Interpreter, env: *Env, args: []const *Expr, use_order: std.math.Order) anyerror!*Expr {
+    try requireExactArgCount(1, args);
+    const arg = try ev.eval(env, args[0]);
+    try requireType(ev, arg, ExprType.lst);
+
+    var winner: *Expr = arg.val.lst.items[0];
+    for (arg.val.lst.items[1..]) |item| {
+        if (use_order == try order(ev, env, &.{ try ev.eval(env, winner), try ev.eval(env, item) })) {
+            winner = item;
+        }
+    }
+
+    return winner;
+}
+
+/// Find the smallest value in a list
+pub fn stdMin(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    return minMax(ev, env, args, std.math.Order.gt);
+}
+
+/// Find the largest value in a list
+pub fn stdMax(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    return minMax(ev, env, args, std.math.Order.lt);
 }
 
 /// This is called when a lambda is defined, not when it's invoked

@@ -38,6 +38,9 @@ pub const Interpreter = struct {
         try instance.env.put("math.pi", &intrinsics.expr_std_math_pi);
         try instance.env.put("math.e", &intrinsics.expr_std_math_e);
         try instance.env.put("math.floor", &intrinsics.expr_std_floor);
+        try instance.env.put("math.round", &intrinsics.expr_std_round);
+        try instance.env.put("math.min", &intrinsics.expr_std_min);
+        try instance.env.put("math.max", &intrinsics.expr_std_max);
         try instance.env.put("math.pow", &intrinsics.expr_std_pow);
         try instance.env.put("time.now", &intrinsics.expr_std_time_now);
         try instance.env.put("number?", &intrinsics.expr_std_is_number);

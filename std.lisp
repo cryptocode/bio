@@ -63,6 +63,32 @@
     list
 ))
 
+; Returns the index of the item, or nil if it doesn't exist
+(var indexof (λ (list item)
+    (var res nil)
+    (loop 'idx '(0 (len list))
+        (if (= (item-at idx list) item) (begin (set! res idx) &break))
+    )
+    res
+))
+
+; In-place replacement of first match in a list
+(var replace-first! (λ (list item replacement)
+    (var idx (indexof list item))
+    (if idx (item-set idx list replacement))
+    list
+))
+
+; In-place replacement of all matches in a list
+(var replace-all! (λ (list item replacement)
+    (var idx)
+    (loop '()
+        (set! idx (indexof list item))
+        (if idx (item-set idx list replacement) &break)
+    )
+    list
+))
+
 ; Update an item in-place by applying the given operation and operand
 ; (item-apply! idx list + 5)
 (var item-apply! (λ (index list op operand)
@@ -180,6 +206,16 @@
     list
 ))
 
+; Calls `op` on every item in `list`, but only after applying the function `lm` to the item
+(var reduce-with (λ (initial lm op list)
+    (var reduction initial)
+    (each list (λ (x) (set! reduction (op reduction (lm x)))))
+    reduction
+))
+
+; Calls a function `fn` for each list item.
+; Not that the item is evaluated when passed to the function. Nested lists
+; should thus be quoted or produced with (list ...), such as ( (list 1 2 3) (list 3 4 5 ) )
 (var each (lambda (lst fn)
     (loop 'index (list 0 (len lst))
         (fn (item-at index lst))
@@ -297,6 +333,14 @@
 ; Decrement variable
 (var dec! (macro (/var)
     `(set! ,/var (- ,/var 1))
+))
+
+; Returns the middle item of a list, or nil if the list is empty
+(var math.middle-item (λ (list)
+    (if (> (len list) 0)
+        (item-at (math.floor (/ (len list) 2)) list)
+        nil
+    )
 ))
 
 (var math.mod (lambda (num div) (- num (* div (math.floor (/ num div))))))

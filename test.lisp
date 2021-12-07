@@ -5,15 +5,33 @@
 
 ((lambda ()
     (var a 5)
+    (var nums-empty '())
+    (var nums-one '(1))
     (var nums '(1 2 3 4))
+    (var nums-odd-length '(1 2 3 4 5))
     (var letters '(a b c d e))
     (var pairlist '((a b) (c d) (e f)))
+
+    (assert (= nil (math.middle-item nums-empty)))
+    (assert (= 1 (math.middle-item nums-one)))
+    (assert (= 3 (math.middle-item nums)))
+    (assert (= 3 (math.middle-item nums-odd-length)))
+
+    (assert (= 2 (indexof nums 3)))
+    (assert (= nil (indexof nums 100)))
+
+    (assert (= 2 (math.min '(5 3 9 2 4 2 5 6))))
+    (assert (= 9 (math.max '(5 3 9 2 4 9 5 6))))
 
     (var updateble '(1 2 3))
     (item-apply! 2 updateble + 10)
     (assert (= '(1 2 13) updateble))
     (assert (= '(13 2 1) (reverse! updateble)))
     (assert (= '(2 1 13) (rotate-left! updateble 1)))
+    (assert (= '(2 1 12) (replace-first! updateble 13 12)))
+    (assert (= '(2 1 12) (replace-first! updateble 'not-there 12)))
+    (set! updateble '(2 2 2))
+    (assert (= '(3 3 3) (replace-all! updateble 2 3)))
 
     (assert (atom? 'a))
     (assert (number? 5))
