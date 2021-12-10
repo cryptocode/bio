@@ -38,6 +38,7 @@ pub var expr_std_assert_true = Expr{ .val = ExprValue{ .fun = stdAssertTrue } };
 pub var expr_std_is_number = Expr{ .val = ExprValue{ .fun = stdIsNumber } };
 pub var expr_std_is_symbol = Expr{ .val = ExprValue{ .fun = stdIsSymbol } };
 pub var expr_std_is_list = Expr{ .val = ExprValue{ .fun = stdIsList } };
+pub var expr_std_is_hashmap = Expr{ .val = ExprValue{ .fun = stdIsHashmap } };
 pub var expr_std_is_err = Expr{ .val = ExprValue{ .fun = stdIsError } };
 pub var expr_std_is_callable = Expr{ .val = ExprValue{ .fun = stdIsCallable } };
 pub var expr_std_gensym = Expr{ .val = ExprValue{ .fun = stdGenSym } };
@@ -51,6 +52,7 @@ pub var expr_std_range = Expr{ .val = ExprValue{ .fun = stdRange } };
 pub var expr_std_rotate_left = Expr{ .val = ExprValue{ .fun = stdRotateLeft } };
 pub var expr_std_item_at = Expr{ .val = ExprValue{ .fun = stdItemAt } };
 pub var expr_std_item_set = Expr{ .val = ExprValue{ .fun = stdItemSet } };
+pub var expr_std_item_remove = Expr{ .val = ExprValue{ .fun = stdItemRemove } };
 pub var expr_std_string = Expr{ .val = ExprValue{ .fun = stdString } };
 pub var expr_std_print = Expr{ .val = ExprValue{ .fun = stdPrint } };
 pub var expr_std_env = Expr{ .val = ExprValue{ .fun = stdEnv } };
@@ -62,6 +64,12 @@ pub var expr_std_eval_string = Expr{ .val = ExprValue{ .fun = stdEvalString } };
 pub var expr_std_eval = Expr{ .val = ExprValue{ .fun = stdEval } };
 pub var expr_std_apply = Expr{ .val = ExprValue{ .fun = stdApply } };
 pub var expr_std_list = Expr{ .val = ExprValue{ .fun = stdList } };
+pub var expr_std_iterate = Expr{ .val = ExprValue{ .fun = stdIterate } };
+pub var expr_std_map_new = Expr{ .val = ExprValue{ .fun = stdHashmapNew } };
+pub var expr_std_map_put = Expr{ .val = ExprValue{ .fun = stdHashmapPut } };
+pub var expr_std_map_get = Expr{ .val = ExprValue{ .fun = stdHashmapGet } };
+pub var expr_std_map_remove = Expr{ .val = ExprValue{ .fun = stdHashmapRemove } };
+pub var expr_std_map_clear = Expr{ .val = ExprValue{ .fun = stdHashmapClear } };
 pub var expr_std_loop = Expr{ .val = ExprValue{ .fun = stdLoop } };
 pub var expr_std_split = Expr{ .val = ExprValue{ .fun = stdSplit } };
 pub var expr_std_append = Expr{ .val = ExprValue{ .fun = stdAppend } };
@@ -80,6 +88,7 @@ pub var expr_std_round = Expr{ .val = ExprValue{ .fun = stdRound } };
 pub var expr_std_min = Expr{ .val = ExprValue{ .fun = stdMin } };
 pub var expr_std_max = Expr{ .val = ExprValue{ .fun = stdMax } };
 pub var expr_std_as = Expr{ .val = ExprValue{ .fun = stdAs } };
+pub var expr_std_split_atom = Expr{ .val = ExprValue{ .fun = stdSplitAtom } };
 pub var expr_std_order = Expr{ .val = ExprValue{ .fun = stdOrder } };
 pub var expr_std_eq = Expr{ .val = ExprValue{ .fun = stdEq } };
 pub var expr_std_eq_approx = Expr{ .val = ExprValue{ .fun = stdEqApprox } };
@@ -514,12 +523,17 @@ pub fn stdIsSymbol(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
 
 pub fn stdIsList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
-    return if (arg.val == ExprType.lst) &expr_atom_true else &expr_atom_false;
+    return boolExpr(arg.val == ExprType.lst);
+}
+
+pub fn stdIsHashmap(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    const arg = try ev.eval(env, args[0]);
+    return boolExpr(arg.val == ExprType.map);
 }
 
 pub fn stdIsError(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
-    return if (arg.val == ExprType.err) &expr_atom_true else &expr_atom_false;
+    return boolExpr(arg.val == ExprType.err);
 }
 
 pub fn stdIsCallable(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
@@ -677,6 +691,23 @@ pub fn stdItemSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
     }
 }
 
+/// In-place removal of the n'th item. The removed item is returned, or nil if index is out of bounds.
+pub fn stdItemRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    const indexArg = try ev.eval(env, args[0]);
+    const listArg = try ev.eval(env, args[1]);
+    try requireType(ev, indexArg, ExprType.num);
+    try requireType(ev, listArg, ExprType.lst);
+
+    // Index may be negative to prepend, so we use isize
+    const index = @floatToInt(isize, indexArg.val.num);
+    var list = &listArg.val.lst;
+    if (index >= 0 and index < list.items.len) {
+        return list.swapRemove(@intCast(usize, index));
+    }
+    return &expr_atom_nil;
+}
+
 /// In-place rotate a list left by the given amount
 /// (rotate-left list amount)
 pub fn stdRotateLeft(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
@@ -825,10 +856,35 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         ExprType.lst => {
             return try ast.makeNumExpr(@intToFloat(f64, expr.val.lst.items.len));
         },
+        ExprType.map => {
+            return try ast.makeNumExpr(@intToFloat(f64, expr.val.map.count()));
+        },
         else => {
-            try ev.printErrorFmt(&expr.src, "len function only works on lists and symbols\n", .{});
+            try ev.printErrorFmt(&expr.src, "len function only works on lists, maps and symbols\n", .{});
             return &expr_atom_nil;
         },
+    }
+}
+
+/// Splits an atom's constituents into a list
+/// (atom.split 123)  -> '(1 2 3)
+/// (atom.split 'abc) -> '(a b c)
+/// (atom.split "a string") -> (list "a" " " "s" "t" "r" "i" "n" "g")
+pub fn stdSplitAtom(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
+    const expr = try ev.eval(env, args[0]);
+    switch (expr.val) {
+        ExprType.sym => {
+            const list = try ast.makeListExpr(null);
+            for (expr.val.sym) |item| {
+                try list.val.lst.append(try ast.makeAtomByDuplicating(&.{item}));
+            }
+            return list;
+        },
+        ExprType.num => {
+            @panic("Splitting numbers not support yet");
+        },
+        else => return &expr_atom_nil,
     }
 }
 
@@ -1042,6 +1098,102 @@ pub fn stdList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
     return list;
 }
 
+/// Create a new hashmap: (hashmap.new '(1 2) '(a 3)))
+pub fn stdHashmapNew(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    var hmap = try ast.makeHashmapExpr(null);
+    for (args) |arg| {
+        try requireType(ev, arg, ExprType.lst);
+        try hmap.val.map.put(try ev.eval(env, arg.val.lst.items[0]), try ev.eval(env, arg.val.lst.items[1]));
+    }
+    return hmap;
+}
+
+/// (iterate mymap (lambda (key value) ...))
+/// (iterate mylst (lambda (item) ...))
+/// (iterate mystr (lambda (char) ...))
+pub fn stdIterate(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    var container = try ev.eval(env, args[0]);
+    const callable = args[1];
+    switch (container.val) {
+        ExprType.map => {
+            var it = container.val.map.iterator();
+            while (it.next()) |entry| {
+                var call = try ast.makeListExpr(null);
+                try call.val.lst.append(callable);
+                try call.val.lst.append(entry.key_ptr.*);
+                try call.val.lst.append(entry.value_ptr.*);
+                _ = try ev.eval(env, call);
+            }
+        },
+        ExprType.lst => {
+            for (container.val.lst.items) |entry| {
+                var call = try ast.makeListExpr(null);
+                try call.val.lst.append(callable);
+                try call.val.lst.append(entry);
+                _ = try ev.eval(env, call);
+            }
+        },
+        ExprType.sym => {
+            for (container.val.sym) |byte| {
+                var call = try ast.makeListExpr(null);
+                try call.val.lst.append(callable);
+                try call.val.lst.append(try ast.makeListExpr(&.{ &expr_atom_quote, try ast.makeAtomByDuplicating(&.{byte}) }));
+                _ = try ev.eval(env, call);
+            }
+        },
+        else => {
+            try ev.printErrorFmt(&container.src, "Invalid container type in (iterate). Must be map, list or symbol\n", .{});
+        },
+    }
+
+    return &expr_atom_nil;
+}
+
+/// (map.put mymap 1 "abc")
+/// Returns the previous value if present, or nil
+pub fn stdHashmapPut(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(3, args);
+    const m = try ev.eval(env, args[0]);
+    try requireType(ev, m, ExprType.map);
+    const k = try ev.eval(env, args[1]);
+    const v = try ev.eval(env, args[2]);
+    const previous = m.val.map.get(k);
+    try m.val.map.put(k, v);
+    return if (previous) |p| p else &expr_atom_nil;
+}
+
+/// (map.get mymap 1)
+/// Returns the matching value, otherwise nil
+pub fn stdHashmapGet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    const m = try ev.eval(env, args[0]);
+    try requireType(ev, m, ExprType.map);
+    const k = try ev.eval(env, args[1]);
+    const v = m.val.map.get(k);
+    return if (v) |val| val else &expr_atom_nil;
+}
+
+/// (map.remove mymap 1)
+/// Returns #t if the entry existed and was removed, otherwise #f
+pub fn stdHashmapRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(2, args);
+    const m = try ev.eval(env, args[0]);
+    try requireType(ev, m, ExprType.map);
+    const k = try ev.eval(env, args[1]);
+    return boolExpr(m.val.map.swapRemove(k));
+}
+
+/// Removes all items and returns the number of items removed
+pub fn stdHashmapClear(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
+    const m = try ev.eval(env, args[0]);
+    try requireType(ev, m, ExprType.map);
+    const count = try ast.makeNumExpr(@intToFloat(f64, m.val.map.count()));
+    m.val.map.clearAndFree();
+    return count;
+}
+
 /// Loop from n to m or until &break is encountered
 /// (loop '(0 9) body goes here) -> loops 10 times
 /// (loop '(9 0) body goes here) -> loops 10 times
@@ -1178,7 +1330,6 @@ fn putEnv(ev: *Interpreter, env: *Env, args: []const *Expr, allow_redefinition: 
 pub fn stdDefine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(1, args);
     try requireType(ev, args[0], ExprType.sym);
-
     return try putEnv(ev, env, args, false);
 }
 

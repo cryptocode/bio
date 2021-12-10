@@ -46,6 +46,7 @@ pub const Interpreter = struct {
         try instance.env.put("number?", &intrinsics.expr_std_is_number);
         try instance.env.put("symbol?", &intrinsics.expr_std_is_symbol);
         try instance.env.put("list?", &intrinsics.expr_std_is_list);
+        try instance.env.put("hashmap?", &intrinsics.expr_std_is_hashmap);
         try instance.env.put("error?", &intrinsics.expr_std_is_err);
         try instance.env.put("callable?", &intrinsics.expr_std_is_callable);
         try instance.env.put("verbose", &intrinsics.expr_std_verbose);
@@ -66,6 +67,7 @@ pub const Interpreter = struct {
         try instance.env.put("rotate-left!", &intrinsics.expr_std_rotate_left);
         try instance.env.put("item-at", &intrinsics.expr_std_item_at);
         try instance.env.put("item-set", &intrinsics.expr_std_item_set);
+        try instance.env.put("item-remove!", &intrinsics.expr_std_item_remove);
         try instance.env.put("define", &intrinsics.expr_std_define);
         try instance.env.put("var", &intrinsics.expr_std_define);
         try instance.env.put("lambda", &intrinsics.expr_std_lambda);
@@ -73,11 +75,18 @@ pub const Interpreter = struct {
         try instance.env.put("λ", &intrinsics.expr_std_lambda);
         try instance.env.put("apply", &intrinsics.expr_std_apply);
         try instance.env.put("list", &intrinsics.expr_std_list);
+        try instance.env.put("iterate", &intrinsics.expr_std_iterate);
+        try instance.env.put("hashmap.new", &intrinsics.expr_std_map_new);
+        try instance.env.put("hashmap.put", &intrinsics.expr_std_map_put);
+        try instance.env.put("hashmap.get", &intrinsics.expr_std_map_get);
+        try instance.env.put("hashmap.remove", &intrinsics.expr_std_map_remove);
+        try instance.env.put("hashmap.clear", &intrinsics.expr_std_map_clear);
         try instance.env.put("loop", &intrinsics.expr_std_loop);
         try instance.env.put("append", &intrinsics.expr_std_append);
         try instance.env.put("eval", &intrinsics.expr_std_eval);
         try instance.env.put("eval-string", &intrinsics.expr_std_eval_string);
         try instance.env.put("string.split", &intrinsics.expr_std_split);
+        try instance.env.put("atom.split", &intrinsics.expr_std_split_atom);
         try instance.env.put("set!", &intrinsics.expr_std_set);
         try instance.env.put("unset!", &intrinsics.expr_std_unset);
         try instance.env.put("try", &intrinsics.expr_std_try);

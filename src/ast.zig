@@ -6,11 +6,12 @@ const sourcelocation = @import("sourcelocation.zig");
 const SourceLocation = sourcelocation.SourceLocation;
 
 pub const ExprErrors = error{ AlreadyReported, MissingRightParen, UnexpectedRightParen, ExpectedNumber, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof };
-pub const ExprType = enum { sym, num, lst, lam, mac, fun, env, err, any };
+pub const ExprType = enum { sym, num, lst, map, lam, mac, fun, env, err, any };
 pub const ExprValue = union(ExprType) {
     sym: []const u8,
     num: f64,
     lst: std.ArrayList(*Expr),
+    map: std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true),
     lam: std.ArrayList(*Expr),
     mac: std.ArrayList(*Expr),
     fun: fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr,
@@ -22,12 +23,33 @@ pub const ExprValue = union(ExprType) {
 /// A Bio expression with a value and an optional environment (lambda expressions
 /// must know in which environment they were defined)
 pub const Expr = struct {
+
+    /// Hashmap support for Expr
+    pub const HashUtil = struct {
+        pub fn hash(_: HashUtil, key: *Expr) u32 {
+            if (key.val == ExprType.sym) {
+                return @truncate(u32, std.hash.Wyhash.hash(0, key.val.sym));
+            } else if (key.val == ExprType.num) {
+                return @truncate(u32, @floatToInt(u64, key.val.num));
+            }
+            @panic("Invalid hash key type");
+        }
+        pub fn eql(_: HashUtil, first: *Expr, second: *Expr) bool {
+            if (first.val == ExprType.sym) {
+                return std.mem.eql(u8, first.val.sym, second.val.sym);
+            } else if (first.val == ExprType.num) {
+                return first.val.num == second.val.num;
+            }
+            @panic("Invalid hash key type");
+        }
+    };
+
     val: ExprValue,
     env: ?*Env = null,
     src: SourceLocation = .{},
 
     /// Create a new expression with an undefined value
-    pub fn create(register_with_gc: bool) !*Expr {
+    pub fn create(register_with_gc: bool) !*@This() {
         var self = try mem.allocator.create(Expr);
         if (register_with_gc) {
             mem.gc.inc();
@@ -42,9 +64,11 @@ pub const Expr = struct {
 
     /// Called by the GC to clean up expression resources. Note that symbols
     /// are deallocated by sweeping the internalized string map.
-    pub fn deinit(self: *Expr) void {
+    pub fn deinit(self: *@This()) void {
         if (self.val == ExprType.lst) {
             self.val.lst.deinit();
+        } else if (self.val == ExprType.map) {
+            self.val.map.deinit();
         } else if (self.val == ExprType.lam) {
             self.val.lam.deinit();
         } else if (self.val == ExprType.mac) {
@@ -53,7 +77,7 @@ pub const Expr = struct {
     }
 
     /// Returns an owned string representation of this expression
-    pub fn toStringAlloc(self: *Expr) anyerror![]u8 {
+    pub fn toStringAlloc(self: *@This()) anyerror![]u8 {
         switch (self.val) {
             ExprValue.sym => return try std.fmt.allocPrint(mem.allocator, "{s}", .{self.val.sym}),
             ExprValue.num => return try std.fmt.allocPrint(mem.allocator, "{d}", .{self.val.num}),
@@ -82,14 +106,36 @@ pub const Expr = struct {
                     }
                 }
                 try bufWriter.writeAll(")");
+                return buf.toOwnedSlice();
+            },
+            ExprValue.map => |map| {
+                var buf = std.ArrayList(u8).init(mem.allocator);
+                defer buf.deinit();
+                var bufWriter = buf.writer();
 
+                // Output is ((key val)(key val)(key val))
+                try bufWriter.writeAll("(");
+                var it = map.iterator();
+                while (it.next()) |entry| {
+                    const key = try entry.key_ptr.*.toStringAlloc();
+                    defer mem.allocator.free(key);
+                    const val = try entry.value_ptr.*.toStringAlloc();
+                    defer mem.allocator.free(val);
+
+                    try bufWriter.writeAll("(");
+                    try bufWriter.writeAll(key);
+                    try bufWriter.writeAll(" ");
+                    try bufWriter.writeAll(val);
+                    try bufWriter.writeAll(")");
+                }
+                try bufWriter.writeAll(")");
                 return buf.toOwnedSlice();
             },
         }
     }
 
     /// Prints the expression to stdout
-    pub fn print(self: *Expr) anyerror!void {
+    pub fn print(self: *@This()) anyerror!void {
         const str = try self.toStringAlloc();
         defer mem.allocator.free(str);
         try std.io.getStdOut().writer().print("{s}", .{str});
@@ -98,38 +144,47 @@ pub const Expr = struct {
 
 /// Environment for variable bindings. Instances are named to get friendly debugging output.
 pub const Env = struct {
-    const hash_util = struct {
-        pub fn hash(_: hash_util, key: *Expr) u32 {
-            std.debug.assert(key.val == ExprType.sym);
-            return @truncate(u32, std.hash.Wyhash.hash(0, key.val.sym));
+    // This is the same as Expr.HashUtil, but is duplicated here to dodge a compiler bug
+    pub const HashUtil = struct {
+        pub fn hash(_: HashUtil, key: *Expr) u32 {
+            if (key.val == ExprType.sym) {
+                return @truncate(u32, std.hash.Wyhash.hash(0, key.val.sym));
+            } else if (key.val == ExprType.num) {
+                return @truncate(u32, @floatToInt(u64, key.val.num));
+            }
+            @panic("Invalid hash key type");
         }
-        pub fn eql(_: hash_util, first: *Expr, second: *Expr) bool {
-            std.debug.assert(first.val == ExprType.sym and second.val == ExprType.sym);
-            return std.mem.eql(u8, first.val.sym, second.val.sym);
+        pub fn eql(_: HashUtil, first: *Expr, second: *Expr) bool {
+            if (first.val == ExprType.sym) {
+                return std.mem.eql(u8, first.val.sym, second.val.sym);
+            } else if (first.val == ExprType.num) {
+                return first.val.num == second.val.num;
+            }
+            @panic("Invalid hash key type");
         }
     };
 
-    map: std.ArrayHashMap(*Expr, *Expr, hash_util, true),
-    parent: ?*Env = null,
+    map: std.ArrayHashMap(*Expr, *Expr, Env.HashUtil, true),
+    parent: ?*@This() = null,
     name: []const u8,
 
-    pub fn deinit(self: *Env) void {
+    pub fn deinit(self: *@This()) void {
         self.map.deinit();
     }
 
     /// Put symbol/value, duplicating the key
-    pub fn put(self: *Env, key: []const u8, val: *Expr) !void {
+    pub fn put(self: *@This(), key: []const u8, val: *Expr) !void {
         const binding_expr = try makeAtomByDuplicating(key);
         try self.putWithSymbol(binding_expr, val);
     }
 
     /// Put symbol/value
-    pub fn putWithSymbol(self: *Env, variable_name: *Expr, val: *Expr) anyerror!void {
+    pub fn putWithSymbol(self: *@This(), variable_name: *Expr, val: *Expr) anyerror!void {
         try self.map.put(variable_name, val);
     }
 
     /// Look up a variable in this or a parent environment
-    pub fn lookup(self: *Env, sym: []const u8, recursive: bool) ?*Expr {
+    pub fn lookup(self: *@This(), sym: []const u8, recursive: bool) ?*Expr {
         var lookupSym = Expr{ .val = ExprValue{ .sym = sym } };
         if (self.map.get(&lookupSym)) |val| {
             return val;
@@ -249,12 +304,27 @@ pub fn makeAtomLiteral(literal: []const u8, take_ownership: bool) anyerror!*Expr
 }
 
 /// Make a list expression
+/// If `initial_expressions` is not null, each item as added *without evaluation*
 pub fn makeListExpr(initial_expressions: ?[]const *Expr) !*Expr {
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .lst = std.ArrayList(*Expr).init(mem.allocator) };
     if (initial_expressions) |expressions| {
         for (expressions) |e| {
             try expr.val.lst.append(e);
+        }
+    }
+    return expr;
+}
+
+/// Make a hashmap expression
+/// If `initial_expressions` is not null, each item as added *without evaluation*
+pub fn makeHashmapExpr(initial_expressions: ?[]const *Expr) !*Expr {
+    var expr = try Expr.create(true);
+    expr.val = ExprValue{ .map = std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true).init(mem.allocator) };
+
+    if (initial_expressions) |expressions| {
+        for (expressions) |e| {
+            try expr.val.map.put(e.val.lst.items[0], e.val.lst.items[1]);
         }
     }
     return expr;

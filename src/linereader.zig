@@ -65,7 +65,7 @@ const Linenoise = struct {
                 }
 
                 // ...which we convert to a [:0]u8
-                self.line = std.mem.spanZ(c_line);
+                self.line = std.mem.span(c_line);
                 self.remaining = self.line.?.len;
                 self.index = 0;
             }

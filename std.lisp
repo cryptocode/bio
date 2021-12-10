@@ -25,11 +25,18 @@
 
 ; Negative range indices means "from the end"
 (var last (lambda (list) (car (range list (- 1)))))
+(var pop-last! (lambda (list) (item-remove! (- (len list) 1) list)))
+(var pop-first! (lambda (list) (item-remove! 0 list)))
 
 ; Prepend item to list
 ;     (cons 'a '(b c))     -> '(a b c)
 ;     (cons '(a b) '(c d)) -> '((a b) c d)
 (var cons (lambda (new existing-list) (append (list new) existing-list)))
+
+; In-place append an item to a list
+(var item-append! (λ (list item)
+    (item-set (len list) list item)
+))
 
 ; Interpret a list as digits in a binary number, convert to number. Any non-zero
 ; list item is interpreted as 1 so '(12 0 1 0 0 23) is 1 0 1 0 0 1 = 41
@@ -100,7 +107,7 @@
 ))
 
 ; Copy a list
-(var copy (λ (original-list)
+(var copy-list (λ (original-list)
     (eval `(list ,@original-list))
 ))
 

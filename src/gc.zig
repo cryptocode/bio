@@ -5,7 +5,7 @@ const Env = ast.Env;
 const ExprType = ast.ExprType;
 
 pub var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true }){};
-pub var allocator = &gpa.allocator;
+pub var allocator = gpa.allocator();
 pub var interned_syms: std.StringArrayHashMapUnmanaged(void) = .{};
 pub var interned_nums: std.AutoHashMapUnmanaged(i16, *Expr) = .{};
 pub var interned_intrinsics: std.StringArrayHashMapUnmanaged(*Expr) = .{};
@@ -135,6 +135,12 @@ pub const GC = struct {
             } else if (expr.val == ExprType.lst) {
                 for (expr.val.lst.items) |item| {
                     try self.mark(item, marked);
+                }
+            } else if (expr.val == ExprType.map) {
+                var it = expr.val.map.iterator();
+                while (it.next()) |entry| {
+                    try self.mark(entry.key_ptr.*, marked);
+                    try self.mark(entry.value_ptr.*, marked);
                 }
             } else if (expr.val == ExprType.lam) {
                 for (expr.val.lam.items) |item| {

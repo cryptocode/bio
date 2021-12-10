@@ -23,6 +23,19 @@
     (assert (= 2 (math.min '(5 3 9 2 4 2 5 6))))
     (assert (= 9 (math.max '(5 3 9 2 4 9 5 6))))
 
+    (var nums-iterated '())
+    (iterate nums (λ (val)
+        (item-append! nums-iterated val)
+    ))
+    (assert (= nums nums-iterated))
+
+    (var thing "thing")
+    (var thing-as-list '())
+    (iterate thing (λ (byte)
+        (item-append! thing-as-list byte)
+    ))
+    (assert (= thing-as-list '(t h i n g)))
+
     (var updateble '(1 2 3))
     (item-apply! 2 updateble + 10)
     (assert (= '(1 2 13) updateble))
@@ -32,6 +45,9 @@
     (assert (= '(2 1 12) (replace-first! updateble 'not-there 12)))
     (set! updateble '(2 2 2))
     (assert (= '(3 3 3) (replace-all! updateble 2 3)))
+    (set! updateble '(1 2 3))
+    (assert (= 2 (item-remove! 1 updateble)))
+    (assert (= '(1 3) updateble))
 
     (assert (atom? 'a))
     (assert (number? 5))
@@ -79,10 +95,12 @@
     (assert (= '(1 1 1 1 1) (listof 1 5)))
 
     (var original '(1 2 3))
-    (var new-list (copy original))
+    (var new-list (copy-list original))
     (append &mut original '(4))
     (assert (= '(1 2 3 4) original))
     (assert (= '(1 2 3) new-list))
+    (item-append! original 5)
+    (assert (= '(1 2 3 4 5) original))
 
     (assert (= 'a (range letters)))
     (assert (= '(e) (range letters -1)))
@@ -90,6 +108,7 @@
     (assert (= '(c d e) (range letters 2)))
     (assert (= '(c d) (range letters 2 4)))
     (assert (= '(b c) (range letters -4 -2)))
+    (assert (= '(a b c d) (range letters 0 -1)))
     (assert (nil? (range letters 5)))
     (assert (nil? (range letters 0 0)))
 
@@ -161,6 +180,35 @@
     (assert (list? (as list 5)))
     (assert (= '(5) (as list 5)))
     (assert (= '(5) (as list '(5))))
+    (assert (= '(a b c) (atom.split 'abc)))
+    (assert (= (list 'a " " 'b 'c) (atom.split "a bc")))
+
+    ; Hashmap
+    (var mymap (hashmap.new ("1" 2) (3 4)))
+    (assert (hashmap? mymap))
+    (assert (= (len mymap) 2))
+    (hashmap.put mymap 5 6)
+    (hashmap.put mymap 7 "Initial entry")
+    (var initial-entry (hashmap.put mymap 7 "Another entry"))
+    (assert (= initial-entry "Initial entry"))
+    (assert (= (len mymap) 4))
+    (assert (= (hashmap.get mymap 7) "Another entry"))
+    (hashmap.remove mymap 7)
+    (assert (= (hashmap.get mymap 7) nil))
+    (assert (= (len mymap) 3))
+
+    (var keys '())
+    (var vals '())
+    (iterate mymap (λ (k v)
+        (item-append! keys k)
+        (item-append! vals v)
+    ))
+    (assert (= '(1 3 5) keys))
+    (assert (= '(2 4 6) vals))
+
+    (var count-removed (hashmap.clear mymap))
+    (assert (= count-removed 3))
+    (assert (= (len mymap) 0))
 
     ; Lambda application
     (assert (= 11 ((λ (a b) (+ a b)) 5 6)))
