@@ -24,14 +24,14 @@
     (assert (= 9 (math.max '(5 3 9 2 4 9 5 6))))
 
     (var nums-iterated '())
-    (iterate nums (λ (val)
+    (list.iterate nums (λ (val)
         (item-append! nums-iterated val)
     ))
     (assert (= nums nums-iterated))
 
     (var thing "thing")
     (var thing-as-list '())
-    (iterate thing (λ (byte)
+    (sym.iterate thing (λ (byte)
         (item-append! thing-as-list byte)
     ))
     (assert (= thing-as-list '(t h i n g)))
@@ -91,9 +91,16 @@
     (assert (= '(a b c d e f (g h)) (append '(a b c) '(d e f (g h)))))
     (assert (= '(1 9 3 4) (replace-or-append '(1 2 3 4) 1 9)))
     (assert (= '(1 2 3 4 9) (replace-or-append '(1 2 3 4) 4 9)))
-
     (assert (= '(1 1 1 1 1) (listof 1 5)))
 
+    ; Destructuring
+    (var stuff '(1 2 3))
+    (vars a b c stuff)
+    (assert (= a 1))
+    (assert (= b 2))
+    (assert (= c 3))
+
+    ; Mutation
     (var original '(1 2 3))
     (var new-list (copy-list original))
     (append &mut original '(4))
@@ -102,6 +109,14 @@
     (item-append! original 5)
     (assert (= '(1 2 3 4 5) original))
 
+    ; Reference equality
+    (var same-1 '(1 2 3))
+    (var same-2 '(1 2 3))
+    (assert (= same-1 same-2))
+    (assert (not (^= same-1 same-2)))
+    (assert (^= same-1 same-1))
+
+    ; Range
     (assert (= 'a (range letters)))
     (assert (= '(e) (range letters -1)))
     (assert (= 'e (range (range letters -1))))
@@ -116,6 +131,12 @@
     (assert (= '(c d) (cadr pairlist)))
     (assert (= '((e f)) (cddr pairlist)))
     (assert (= '(e f) (caddr pairlist)))
+
+    ; Ascii
+    (assert (lowercase? 'abc))
+    (assert (lowercase? (lowercase 'ABC)))
+    (assert (uppercase? 'ABC))
+    (assert (uppercase? (uppercase 'abc)))
 
     ; Indexed lookup
     (assert (= 2 (item-at 1 '(1 2 3))))
@@ -147,6 +168,7 @@
     (assert (and #t #t))
     (assert (not (and #t #f)))
     (assert (not (and #f #t)))
+    (assert (and #t #t #t))
 
     ; Arithmetic
     (assert (= (- 5 1) 4))
@@ -157,6 +179,11 @@
     (let ((a 9)) (assert (= (-= a 1 2 3) 3)))
     (let ((a 1)) (assert (= (*= a 1 2 3) 6)))
     (let ((a 9)) (assert (= (/= a 3 2) 1.5)))
+
+    ; Approximate equality works for both numbers (relative tolerance) and symbols (case)
+    (assert (~= 0.0000001 0.000000099 0.05))
+    (assert (~= 0.0000001 0.00000009999999))
+    (assert (~= "abc" "ABC"))
 
     ; Ordering
     (assert (= -1 (order '() '(1))))
@@ -183,6 +210,37 @@
     (assert (= '(a b c) (atom.split 'abc)))
     (assert (= (list 'a " " 'b 'c) (atom.split "a bc")))
 
+    ; Pop
+    (var poppable '(1 2 3))
+    (assert (= 3 (pop-last! poppable)))
+    (assert (= '(1 2) poppable))
+    (assert (= 1 (pop-first! poppable)))
+    (assert (= '(2) poppable))
+    (assert (= 2 (pop-first! poppable)))
+    (assert (= '() poppable))
+    (assert (= nil (pop-first! poppable)))
+    (assert (= '() poppable))
+
+    ; Swap
+    (var s1 '(1 2))
+    (var s2 '(3 4))
+    (env.swap! s1 s2)
+    (assert (= s1 '(3 4)))
+    (assert (= s2 '(1 2)))
+
+    ; Containment
+    (var containment-map (hashmap.new ("1" 2) (3 nil)))
+    (var containment-list '(1 2 nil))
+    (var containment-sym 'demo)
+    (assert (contains? containment-map "1"))
+    (assert (contains? containment-map 3))
+    (assert (not (contains? containment-map 4)))
+    (assert (contains? containment-list 1))
+    (assert (contains? containment-list nil))
+    (assert (not (contains? containment-list 3)))
+    (assert (contains? containment-sym 'e))
+    (assert (not (contains? containment-sym 'f)))
+
     ; Hashmap
     (var mymap (hashmap.new ("1" 2) (3 4)))
     (assert (hashmap? mymap))
@@ -199,7 +257,7 @@
 
     (var keys '())
     (var vals '())
-    (iterate mymap (λ (k v)
+    (hashmap.iterate mymap (λ (k v)
         (item-append! keys k)
         (item-append! vals v)
     ))
@@ -209,6 +267,24 @@
     (var count-removed (hashmap.clear mymap))
     (assert (= count-removed 3))
     (assert (= (len mymap) 0))
+
+    ; k -> '()
+    (var hmlist (hashmap.new))
+    (hashmap.append! hmlist 'a 1)
+    (hashmap.append! hmlist 'a 2)
+    (assert (= (hashmap.get hmlist 'a) '(1 2)))
+
+    ; The 'a entry exists, so the lambda is called, which updates then list
+    (hashmap.put-or-apply hmlist 'a 3 (λ (list)
+        (assert (= list '(1 2)))
+        (item-append! list 3)
+    ))
+    (assert (= (hashmap.get hmlist 'a) '(1 2 3)))
+    (assert (= (hashmap.maybe-put hmlist 'a '(5 5 5)) '(1 2 3)))
+    (assert (= (hashmap.maybe-put hmlist 'b '(5 5 5)) '(5 5 5)))
+
+    (assert (contains? hmlist 'a))
+    (assert (not (contains? hmlist 'not-there)))
 
     ; Lambda application
     (assert (= 11 ((λ (a b) (+ a b)) 5 6)))
@@ -291,7 +367,7 @@
     ; A list of pairs with the order reversed
     (assert (= '((1 a) (2 b) (3 c)) (map (λ (x y) (list y x)) '(a b c) '(1 2 3))))
 
-    ; I failed expression without an failure branch evaluates to nil
+    ; A failed expression without an failure branch evaluates to nil
     (assert (nil? (try (map + '1) #t)))
 
     ; Test tokenizing
@@ -326,13 +402,22 @@
     (loop '() (+= loop-count 1) (if (= loop-count 100) &break nil))
     (assert (= loop-count 100))
 
+    ; Multidimensional list (matrix) access
+    (var M '( ( (10 11 12) (13 14 15) )
+              ( (16 17 18) (19 20 21) )))
+    (assert (= 20 (matrix-at M 1 1 1)))
+    (assert (= nil (matrix-at M 1 1 100)))
+    (assert (= '(10 11 12) (matrix-at M 0 0)))
+
+    (var M2 '( (1 2 3 4) (a b c d)))
+    (assert (= 'c (matrix-at M2 1 2)))
+
+    ; Update matrix; the old value is returned
+    (assert (= 'c (matrix-set! M2 'x 1 2)))
+    (assert (= 'x (matrix-at M2 1 2)))
+
     (print "Tests passed\n")
 
-    ; You can load and use this file as a module with:
-    ;   (var mod-test (load "test.lisp"))
-    ;   (print "Module name   :" (. mod-test module-name))
-    ;   (print "Major version :" (car (. mod-test module-version)))
-    ;   (. mod-test counter)
     (var module-name "Test Module")
     (var module-version '(1 0))
     (self)

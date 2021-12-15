@@ -901,9 +901,9 @@ Expands to a tail-recursive function running a body while the predicate holds:
 )
 ```
 
-### each
+### list.iterate and each
 
-The `each` function allows for convenient iteration of lists. The first argument is a list. The second argument is a function that's called for every item in the list, with the item as an argument.
+The `list.iterate` function allows for convenient iteration of lists. The first argument is a list. The second argument is a function that's called for every item in the list, with the item as an argument. `each` is an alias to this function.
 
 ```scheme
 ; Print all numbers

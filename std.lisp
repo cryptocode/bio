@@ -120,28 +120,10 @@
 (var < (lambda (x y) (if (= (order x y) (- 1)) #t #f)))
 (var > (lambda (x y) (if (= (order x y) 1) #t #f)))
 (var != (lambda (x y) (not (= x y))))
-(var not (lambda (x) (if x #f #t)))
 (var += (macro (/expr1 &rest /expr2) `(set! ,/expr1 (+ ,/expr1 ,@/expr2))))
 (var -= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (- ,/expr1 ,@/expr2))))
 (var *= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (* ,/expr1 ,@/expr2))))
 (var /= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (/ ,/expr1 ,@/expr2))))
-
-; Logical or with shortcut evaluation. Identifiers starting with / is
-; a convention for macro parameters to help avoid name clashes.
-(var or (macro (/expr1 /expr2)
-    `(if ,/expr1
-        #t
-        (if ,/expr2 #t #f)
-    )
-))
-
-; Logical and with shortcut evaluation
-(var and (macro (/expr1 /expr2)
-    `(if ,/expr1
-        (if ,/expr2 #t #f)
-        #f
-    )
-))
 
 ; The let macro, which makes a new scope with an arbitrary number of local bindings
 ; The transformation goes like this:
@@ -155,7 +137,7 @@
     (var params '())
     (var args '())
 
-    (each /binding-pairs (lambda (item)
+    (list.iterate /binding-pairs (lambda (item)
         (append &mut params (list (car item)))
         (append &mut args (list (eval (cadr item))))
     ))
@@ -163,8 +145,15 @@
     `((lambda (,@params) ,@/body) ,@args)
 ))
 
-; The while macro expands to a tail-recursive lambda
 (var while (macro (/predicate &rest /body)
+    `((loop '()
+        (if (not ,/predicate) &break)
+        ,@/body
+    ))
+))
+
+; The while macro expands to a tail-recursive lambda
+(var while-recursive (macro (/predicate &rest /body)
     (var loop-name (gensym))
     `(begin
         (var ,loop-name (lambda ()
@@ -216,17 +205,29 @@
 ; Calls `op` on every item in `list`, but only after applying the function `lm` to the item
 (var reduce-with (λ (initial lm op list)
     (var reduction initial)
-    (each list (λ (x) (set! reduction (op reduction (lm x)))))
+    (list.iterate list (λ (x) (set! reduction (op reduction (lm x)))))
     reduction
 ))
 
-; Calls a function `fn` for each list item.
-; Not that the item is evaluated when passed to the function. Nested lists
-; should thus be quoted or produced with (list ...), such as ( (list 1 2 3) (list 3 4 5 ) )
-(var each (lambda (lst fn)
-    (loop 'index (list 0 (len lst))
-        (fn (item-at index lst))
-    )
+; Multidimensional list access
+; (var M '( ( (10 11 12) (13 14 15) ) ( (16 17 18) (19 20 21) ) ) )
+; (matrix-at M 0 1 2) -> 2
+(var matrix-at (λ (M &rest indices)
+    (var res M)
+    (list.iterate indices (λ (i)
+        (set! res (item-at i res))
+    ))
+    res
+))
+
+; (matrix-set M 'newvalue 1 2 1)
+; The previous value is returned
+(var matrix-set! (λ (M value &rest indices)
+    (var curlist M)
+    (list.iterate (range indices 0 -1) (λ (i)
+        (set! curlist (item-at i curlist))
+    ))
+    (item-set (last indices) curlist value)
 ))
 
 (var each-pair (lambda (lst fn)
@@ -239,6 +240,59 @@
             )
         )
         nil
+    )
+))
+
+; (hashmap.iterate mymap (λ (key value) ... ))
+(var hashmap.iterate (lambda (hashmap fn)
+    (var keys (hashmap.keys hashmap))
+    (var key)
+    (loop 'index (list 0 (len keys))
+        (set! key (item-at index keys))
+        (fn key (hashmap.get hashmap key))
+    )
+))
+
+; For hashmaps with list values, this can be used to easily inplace-add an item
+; to that list, given a key. The list is created if necessary.
+(var hashmap.append! (λ (hashmap k v)
+    (var cur (hashmap.get hashmap k))
+    (if cur (item-append! cur v) (hashmap.put hashmap k (list v)))
+))
+
+; Same as (hashmap.put ...), except that a function is called if the item already exists
+; rather than replacing the value. The function receives the value reference.
+(var hashmap.put-or-apply (λ (hashmap key value fn)
+    (var existing (hashmap.get hashmap key))
+    (if existing
+        (fn existing)
+        (hashmap.put hashmap key value)
+    )
+))
+
+; Similar to (hashmap.put), but does not replace the value if the key exists
+(var hashmap.maybe-put (λ (hashmap key value)
+    (var existing (hashmap.get hashmap key))
+    (if existing
+        existing
+        (begin (hashmap.put hashmap key value) value)
+    )
+))
+
+(var list.iterate (λ (lst fn)
+    (loop 'index (list 0 (len lst))
+        ; This is a subtle point: evaluating the argument actually looks up the
+        ; item rather than evaluating it. Items themselves are thus passed to `fn` unevaluated.
+        (fn (item-at index lst))
+    )
+))
+
+(var each list.iterate)
+
+; (sym.iterate "abc def" print)
+(var sym.iterate (λ (sym fn)
+    (loop 'index (list 0 (len sym))
+        (fn (item-at index sym))
     )
 ))
 
@@ -312,7 +366,7 @@
 (var modulo-items (lambda (lst op)
     (var index 1)
     (var res '())
-    (each lst (lambda (item)
+    (list.iterate lst (lambda (item)
                   (if (eval (op 0 (math.mod index 2)))
                     (set! res (append res item))
                     nil

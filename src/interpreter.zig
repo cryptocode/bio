@@ -49,6 +49,10 @@ pub const Interpreter = struct {
         try instance.env.put("hashmap?", &intrinsics.expr_std_is_hashmap);
         try instance.env.put("error?", &intrinsics.expr_std_is_err);
         try instance.env.put("callable?", &intrinsics.expr_std_is_callable);
+        try instance.env.put("lowercase?", &intrinsics.expr_std_is_lowercase);
+        try instance.env.put("uppercase?", &intrinsics.expr_std_is_uppercase);
+        try instance.env.put("lowercase", &intrinsics.expr_std_lowercase);
+        try instance.env.put("uppercase", &intrinsics.expr_std_uppercase);
         try instance.env.put("verbose", &intrinsics.expr_std_verbose);
         try instance.env.put("assert", &intrinsics.expr_std_assert_true);
         try instance.env.put("gensym", &intrinsics.expr_std_gensym);
@@ -56,8 +60,11 @@ pub const Interpreter = struct {
         try instance.env.put("string", &intrinsics.expr_std_string);
         try instance.env.put("as", &intrinsics.expr_std_as);
         try instance.env.put("len", &intrinsics.expr_std_len);
+        try instance.env.put("contains?", &intrinsics.expr_std_contains);
+        try instance.env.put("clone", &intrinsics.expr_std_clone);
         try instance.env.put("env", &intrinsics.expr_std_env);
         try instance.env.put("self", &intrinsics.expr_std_self);
+        try instance.env.put("parent", &intrinsics.expr_std_parent);
         try instance.env.put("quote", &intrinsics.expr_std_quote);
         try instance.env.put("quasiquote", &intrinsics.expr_std_quasi_quote);
         try instance.env.put("unquote", &intrinsics.expr_std_unquote);
@@ -65,22 +72,24 @@ pub const Interpreter = struct {
         try instance.env.put("double-quote", &intrinsics.expr_std_double_quote);
         try instance.env.put("range", &intrinsics.expr_std_range);
         try instance.env.put("rotate-left!", &intrinsics.expr_std_rotate_left);
+        try instance.env.put("env.swap!", &intrinsics.expr_std_swap);
         try instance.env.put("item-at", &intrinsics.expr_std_item_at);
         try instance.env.put("item-set", &intrinsics.expr_std_item_set);
         try instance.env.put("item-remove!", &intrinsics.expr_std_item_remove);
         try instance.env.put("define", &intrinsics.expr_std_define);
         try instance.env.put("var", &intrinsics.expr_std_define);
+        try instance.env.put("vars", &intrinsics.expr_std_vars);
         try instance.env.put("lambda", &intrinsics.expr_std_lambda);
         try instance.env.put("macro", &intrinsics.expr_std_macro);
         try instance.env.put("λ", &intrinsics.expr_std_lambda);
         try instance.env.put("apply", &intrinsics.expr_std_apply);
         try instance.env.put("list", &intrinsics.expr_std_list);
-        try instance.env.put("iterate", &intrinsics.expr_std_iterate);
         try instance.env.put("hashmap.new", &intrinsics.expr_std_map_new);
         try instance.env.put("hashmap.put", &intrinsics.expr_std_map_put);
         try instance.env.put("hashmap.get", &intrinsics.expr_std_map_get);
         try instance.env.put("hashmap.remove", &intrinsics.expr_std_map_remove);
         try instance.env.put("hashmap.clear", &intrinsics.expr_std_map_clear);
+        try instance.env.put("hashmap.keys", &intrinsics.expr_std_map_keys);
         try instance.env.put("loop", &intrinsics.expr_std_loop);
         try instance.env.put("append", &intrinsics.expr_std_append);
         try instance.env.put("eval", &intrinsics.expr_std_eval);
@@ -91,6 +100,9 @@ pub const Interpreter = struct {
         try instance.env.put("unset!", &intrinsics.expr_std_unset);
         try instance.env.put("try", &intrinsics.expr_std_try);
         try instance.env.put("error", &intrinsics.expr_std_error);
+        try instance.env.put("and", &intrinsics.expr_std_logical_and);
+        try instance.env.put("or", &intrinsics.expr_std_logical_or);
+        try instance.env.put("not", &intrinsics.expr_std_logical_not);
         try instance.env.put("+", &intrinsics.expr_std_sum);
         try instance.env.put("-", &intrinsics.expr_std_sub);
         try instance.env.put("*", &intrinsics.expr_std_mul);
@@ -124,6 +136,7 @@ pub const Interpreter = struct {
             ExprErrors.InvalidArgumentCount => "Invalid argument count",
             ExprErrors.InvalidArgumentType => "Invalid argument type",
             ExprErrors.ExpectedNumber => "Expected a number",
+            ExprErrors.ExpectedBool => "Expected a boolean expression",
             ExprErrors.UnexpectedRightParen => "Unexpected )",
             ExprErrors.MissingRightParen => "Missing )",
             ExprErrors.SyntaxError => "Syntax error while parsing",
@@ -372,6 +385,10 @@ pub const Interpreter = struct {
                         },
                     }
                     return &intrinsics.expr_atom_nil;
+                },
+                // This allows us to create intrinsics that pass intrinsics as arguments
+                ExprValue.fun => {
+                    return e;
                 },
                 else => {
                     try self.printErrorFmt(&e.src, "Invalid expression: {}\n", .{e});
