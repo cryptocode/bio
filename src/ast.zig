@@ -34,7 +34,8 @@ pub const Expr = struct {
             }
             @panic("Invalid hash key type");
         }
-        pub fn eql(_: HashUtil, first: *Expr, second: *Expr) bool {
+        pub fn eql(_: HashUtil, first: *Expr, second: *Expr, b_index: usize) bool {
+            _ = b_index;
             if (first.val == ExprType.sym) {
                 return std.mem.eql(u8, first.val.sym, second.val.sym);
             } else if (first.val == ExprType.num) {
@@ -144,7 +145,7 @@ pub const Expr = struct {
 
 /// Environment for variable bindings. Instances are named to get friendly debugging output.
 pub const Env = struct {
-    // This is the same as Expr.HashUtil, but is duplicated here to dodge a compiler bug
+    // This is the same as Expr.HashUtil, but is duplicated here to dodge a `get_slice_type` compiler bug
     pub const HashUtil = struct {
         pub fn hash(_: HashUtil, key: *Expr) u32 {
             if (key.val == ExprType.sym) {
@@ -154,7 +155,8 @@ pub const Env = struct {
             }
             @panic("Invalid hash key type");
         }
-        pub fn eql(_: HashUtil, first: *Expr, second: *Expr) bool {
+        pub fn eql(_: HashUtil, first: *Expr, second: *Expr, b_index: usize) bool {
+            _ = b_index;
             if (first.val == ExprType.sym) {
                 return std.mem.eql(u8, first.val.sym, second.val.sym);
             } else if (first.val == ExprType.num) {
