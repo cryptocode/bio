@@ -41,7 +41,7 @@ const Linenoise = struct {
             const duped = try mem.allocator.dupeZ(u8, entry);
             defer mem.allocator.free(duped);
             // Linenoise takes a copy
-            _ = linenoise.linenoiseHistoryAdd(duped);
+            _ = linenoise.linenoiseHistoryAdd(duped.ptr);
         }
     }
 

@@ -8,7 +8,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.linkLibC();
     if (!target.isWindows()) {
         exe.addCSourceFile("deps/linenoise.c", &[_][]const u8{"-std=c99"});
-        exe.addIncludeDir("deps");
+        exe.addIncludePath("deps");
     }
     exe.setTarget(target);
     exe.setBuildMode(mode);

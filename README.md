@@ -1,6 +1,6 @@
 <img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
 
-Bio is a Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
+Bio is an experimental Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
 
 The language is Scheme inspired and features macros, garbage collection, error handling, an object/module facility, and comes with a small standard library.
 
@@ -89,7 +89,11 @@ Table of Contents
 
 # Building and running
 
-Clone the repository and cd to the root directory. You'll need a recent [master build of Zig](https://ziglang.org/download/)
+Clone the repository and cd to the root directory. 
+
+You'll need a recent [master build of Zig](https://ziglang.org/download/)
+
+Last tested with `stage2` and Zig version `0.10.0-dev.4418+99c3578f6`
 
 **Build**
 

@@ -14,7 +14,7 @@ pub const ExprValue = union(ExprType) {
     map: std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true),
     lam: std.ArrayList(*Expr),
     mac: std.ArrayList(*Expr),
-    fun: fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr,
+    fun: *const fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr,
     env: *Env,
     err: *Expr,
     any: usize,
