@@ -362,8 +362,8 @@ pub const Interpreter = struct {
                             }
 
                             // For lambdas, we set up the next iteration to eval the last expression, while for
-                            // macros we just evaluate it, and then evaluate it again in order to evaluate the
-                            // generated expression produced by the macro.
+                            // macros we just evaluate it on the assumption it's a quoted expression, which is
+                            // then evaluated in the next TCO iteration.
                             const last_expr = fun.items[fun.items.len - 1];
                             if (kind == ExprValue.lam) {
                                 env = local_env;
@@ -375,7 +375,9 @@ pub const Interpreter = struct {
                                     try self.printError(err);
                                     return &intrinsics.expr_atom_nil;
                                 };
-                                return self.eval(local_env, result);
+                                env = local_env;
+                                maybe_next = result;
+                                continue;
                             }
                         },
                         else => {

@@ -1399,7 +1399,7 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
     return last;
 }
 
-/// Creates a new list, or updates an existing one if used with &mut, and populates it with the arguments. 
+/// Creates a new list, or updates an existing one if used with &mut, and populates it with the arguments.
 /// If any arguments are lists, their elements are spliced into the result list. nil arguments are ignored.
 /// (append '(1 2) '(3 4)) -> (1 2 3 4)
 /// (append '(1 2 3) '4) -> (1 2 3 4)

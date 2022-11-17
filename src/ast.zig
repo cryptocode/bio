@@ -23,7 +23,6 @@ pub const ExprValue = union(ExprType) {
 /// A Bio expression with a value and an optional environment (lambda expressions
 /// must know in which environment they were defined)
 pub const Expr = struct {
-
     /// Hashmap support for Expr
     pub const HashUtil = struct {
         pub fn hash(_: HashUtil, key: *Expr) u32 {

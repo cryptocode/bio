@@ -6,6 +6,14 @@ The language is Scheme inspired and features macros, garbage collection, error h
 
 A description of the project is available at [dev.to](https://dev.to/stein/bio-all-your-parentheses-are-belong-to-us-25lo)
 
+```scheme
+(filter
+    (quicksort '(5 40 1 -3 2) <)
+        (λ (x) (>= x 0)))
+
+(1 2 5 40)
+```
+
 Table of Contents
 =================
 
@@ -89,7 +97,7 @@ Table of Contents
 
 # Building and running
 
-Clone the repository and cd to the root directory. 
+Clone the repository and cd to the root directory.
 
 You'll need a recent [master build of Zig](https://ziglang.org/download/)
 
@@ -173,7 +181,7 @@ The `#!` symbol contains the error after a `try` expression. If no error occurs,
     (print "Failed: " #!))
 ```
 
-### typename 
+### typename
 
 The 'typename' functions returns a string representation of the type. The most specific classification is returned, so `(typename #t)` is "bool", even though #t is also a symbol.
 
@@ -451,7 +459,7 @@ The `quasiquote` function and the \` shorthand returns the argument unevaluated.
 Quasi quotation is commonly used to make templates in macros, but it has uses in regular functions as well.
 
 ### unquote
-In the context of a quasiquote, evaluate the argument. The shorthand version is `,` 
+In the context of a quasiquote, evaluate the argument. The shorthand version is `,`
 
 ### unquote-splicing
 In the context of a quasiquote, evaluate the elements of the list and place the result in the enclosing list. The shorthand version is `,@`
@@ -469,7 +477,7 @@ Evaluates all arguments, leaving the last evaluation as the result. If quote and
 
 ### apply
 
-Evaluates the given function with the given argument list. The last argument must be a list argument. Any preceding arguments are prepended to that list. This means that `(apply + 1 '(2 3))` is equivalent to `(apply + '(1 2 3))`. 
+Evaluates the given function with the given argument list. The last argument must be a list argument. Any preceding arguments are prepended to that list. This means that `(apply + 1 '(2 3))` is equivalent to `(apply + '(1 2 3))`.
 
 ```scheme
 > (apply + 5 2 1 '(10 20))
@@ -882,8 +890,8 @@ Applies a function over one or more lists.
 Sorts a list using the supplied comparator function. The following example sorts the same list in ascending and descending order by passing `<` and `>` as the comparator functions. In the ascending example, we also filter out negative numbers:
 
 ```scheme
-> (filter 
-    (quicksort '(5 40 1 -3 2) <) 
+> (filter
+    (quicksort '(5 40 1 -3 2) <)
     (λ (x) (>= x 0)))
 (1 2 5 40)
 
@@ -1099,7 +1107,7 @@ Below is `mod-point.lisp`, which in this example is placed in a subdirectory cal
 
 ```scheme
 ((lambda ()
-    ; Functions shared between types are actually macros so their parent 
+    ; Functions shared between types are actually macros so their parent
     ; environment is the calling environment; this way x and y will be found
     (var generic-update (macro (new-x new-y)
         (set! x new-x)
@@ -1120,7 +1128,7 @@ Below is `mod-point.lisp`, which in this example is placed in a subdirectory cal
     (var new-location (lambda (x y)
         (var update generic-update)
         (var as-string (lambda ()
-            (string 
+            (string
                 (math.abs x) (if (< x 0) "° S" "° N")
                 "  "
                 (math.abs y) (if (< y 0) "° W" "° E"))

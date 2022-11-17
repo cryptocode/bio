@@ -120,6 +120,9 @@
 (var < (lambda (x y) (if (= (order x y) (- 1)) #t #f)))
 (var > (lambda (x y) (if (= (order x y) 1) #t #f)))
 (var != (lambda (x y) (not (= x y))))
+
+; Mutation macros. Note that the / in front of the variable name is just a stdlib
+; naming convention to avoid name clashes in the macro expansion.
 (var += (macro (/expr1 &rest /expr2) `(set! ,/expr1 (+ ,/expr1 ,@/expr2))))
 (var -= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (- ,/expr1 ,@/expr2))))
 (var *= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (* ,/expr1 ,@/expr2))))
