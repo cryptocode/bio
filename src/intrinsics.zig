@@ -29,6 +29,7 @@ pub var expr_atom_nil = Expr{ .val = ExprValue{ .sym = "nil" } };
 pub var expr_atom_rest = Expr{ .val = ExprValue{ .sym = "&rest" } };
 pub var expr_atom_mut = Expr{ .val = ExprValue{ .sym = "&mut" } };
 pub var expr_atom_break = Expr{ .val = ExprValue{ .sym = "&break" } };
+pub var expr_atom_macroexpand = Expr{ .val = ExprValue{ .sym = "macroexpand" } };
 pub var expr_std_math_pi = Expr{ .val = ExprValue{ .num = std.math.pi } };
 pub var expr_std_math_e = Expr{ .val = ExprValue{ .num = std.math.e } };
 pub var expr_std_import = Expr{ .val = ExprValue{ .fun = stdImport } };
@@ -1136,7 +1137,7 @@ pub fn stdMacro(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
 pub fn stdEval(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var res: *Expr = &expr_atom_nil;
     for (args) |arg| {
-        if (arg.val == ExprType.lst and (arg.val.lst.items[0] == &expr_atom_quote or arg.val.lst.items[0] == &expr_atom_quasi_quote)) {
+        if (arg.val == ExprType.lst and (arg.val.lst.items[0] == &expr_atom_quote or arg.val.lst.items[0] == &expr_atom_quasi_quote or arg.val.lst.items[0] == &expr_atom_macroexpand)) {
             res = try ev.eval(env, try ev.eval(env, arg));
         } else {
             res = try ev.eval(env, arg);

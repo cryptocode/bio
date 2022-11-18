@@ -182,6 +182,7 @@ pub const Interpreter = struct {
     pub fn eval(self: *Interpreter, environment: *Env, expr: *Expr) anyerror!*Expr {
         var maybe_next: ?*Expr = expr;
         var env: *Env = environment;
+        var seen_macro_expand = false;
 
         tailcall_optimization_loop: while (maybe_next) |e| {
             if (self.exit_code) |_| {
@@ -209,7 +210,12 @@ pub const Interpreter = struct {
                     }
 
                     const args_slice = list.items[1..];
-                    if (list.items[0] == &intrinsics.expr_atom_begin) {
+                    if (list.items[0] == &intrinsics.expr_atom_macroexpand) {
+                        // Signal that we don't want to evaluate the expression returned by the macro
+                        seen_macro_expand = true;
+                        maybe_next = args_slice[args_slice.len - 1];
+                        continue;
+                    } else if (list.items[0] == &intrinsics.expr_atom_begin) {
                         var res: *Expr = &intrinsics.expr_atom_nil;
                         for (args_slice[0 .. args_slice.len - 1]) |arg| {
                             res = try self.eval(env, arg);
@@ -375,6 +381,11 @@ pub const Interpreter = struct {
                                     try self.printError(err);
                                     return &intrinsics.expr_atom_nil;
                                 };
+
+                                if (seen_macro_expand) {
+                                    return result;
+                                }
+
                                 env = local_env;
                                 maybe_next = result;
                                 continue;

@@ -375,9 +375,11 @@ A lambda invocation has its own environment, and the parent environment is the o
 
 ### macro
 
-This function creates a macro expression. Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so, usually using quasi quotation.
+This function creates a macro.
 
-When executed, the body is evaluated, usually producing a quasiquote expression (which serves as a code template). The last expression is then evaluated again as the result. This causes the quasiquote expansion to be evaluated as code:
+Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so.
+
+When the macro is invoked, the body is evaluated. The returned expression (which represents Bio code) is then evaluated as the final result.
 
 ```scheme
 (var print-with-label (macro (label &rest values)
@@ -389,7 +391,52 @@ When executed, the body is evaluated, usually producing a quasiquote expression 
 Primes: 2 3 5 7
 ```
 
-A macro invocation has its own environment, and the parent environment is the current one.
+A macro invocation has its own environment, and the parent environment is the current one. This is different from lambdas whose parent environment is the one in which the lambda was defined.
+
+### macroexpand
+
+You can stop the evaluation of the code returned from a macro by wrapping it in `macroexpand`
+
+Consider a typical swap macro:
+
+```scheme
+(var swap (macro (a b)
+    `(let ((temp ,a))
+       (set! ,a ,b)
+       (set! ,b temp))))
+```
+
+Here's a typical usage example:
+
+```scheme
+(let ((x 3) (y 7))
+    (swap x y)
+    (print "Swapped:" x y "\n")
+)
+
+Swapped: 7 3
+```
+
+But now we wanna see how the macro is expanded as code instead:
+
+```scheme
+(let ((x 5) (y 8))
+    (print "Macro expansion:" (macroexpand (swap x y)) "\n")
+)
+
+Macro expansion: (let ((temp x)) (set! x y) (set! y temp))
+```
+
+Of course, you can store away the expansion for later invocation, or just evaluate the expansion directly:
+
+```scheme
+(let ((x 5) (y 8))
+    (eval (macroexpand (swap x y)))
+    (print "Swapped:" x y "\n")
+)
+
+Swapped: 8 5
+```
 
 ### self and environment lookups
 
