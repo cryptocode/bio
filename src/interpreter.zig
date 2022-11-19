@@ -437,16 +437,14 @@ pub const Interpreter = struct {
                         return ExprErrors.UnexpectedRightParen;
                     },
                     ',' => {
-                        var unquote_op: *Expr = &intrinsics.expr_atom_unquote;
+                        var unquote_op = &intrinsics.expr_atom_unquote;
                         var index_adjust: usize = 1;
 
                         // The Lisperator has no understanding of the , and ,@ prefixes, so we adjust it manually
                         // For instance, if the current token is ,@abc then the next token will be abc
                         if (val.len > 1 and val[1] == '@') {
                             unquote_op = &intrinsics.expr_atom_unquote_splicing;
-                            if (val.len > 2) {
-                                index_adjust += 1;
-                            }
+                            index_adjust += 1;
                         }
 
                         if (index_adjust > 0) {

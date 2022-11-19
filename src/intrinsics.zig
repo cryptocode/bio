@@ -634,8 +634,10 @@ pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anye
 }
 
 /// Recursive quasi-quote expansion
-///   (quasiquote (1 2 (unquote (+ 1 2)) 4)) -> '(1 2 3 4)
+///   (quasiquote (1 2 (unquote (+ 1 2)) 4))           -> '(1 2 3 4)
+///   (quasiquote (1 2 (+ 1 2) 4))                     -> '(1 2 (+ 1 2) 4)
 ///   (quasiquote (1 (unquote-splicing (list 2 3)) 4)) -> '(1 2 3 4)
+///   `(1 ,@(list 2 3) 4)                              -> '(1 2 3 4)
 pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
 

@@ -82,6 +82,10 @@
     (assert (= '(1 3) (odd-items nums)))
     (assert (= '(2 4) (even-items nums)))
     (assert (= '(1 2 3 4 5) `(,@nums ,a)))
+    (assert (= '(1 2 3 4 5) `(,@(list 1 2 3 4) ,a)))
+    (assert (= '(1 2 3 4 5) `(,@ nums ,a)))
+    (assert (= '(1 2 3 4 5) `(,@ (list 1 2 3 4) ,a)))
+
     (assert (= '(1 2 3) (cons '1 '(2 3))))
     (assert (=  '(j k l) (cons 'j '(k l))))
     (assert (= '(1 2 3) (append '(1 2) '3)))
