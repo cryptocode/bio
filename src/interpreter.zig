@@ -535,7 +535,7 @@ pub const Interpreter = struct {
 
         if (balance < 0) {
             std.debug.print("Missing )\n", .{});
-            return ExprErrors.UnexpectedRightParen;
+            return ExprErrors.MissingRightParen;
         }
 
         return expr.toOwnedSlice();
