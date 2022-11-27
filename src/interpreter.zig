@@ -183,6 +183,7 @@ pub const Interpreter = struct {
         var maybe_next: ?*Expr = expr;
         var env: *Env = environment;
         var seen_macro_expand = false;
+        self.has_errors = false;
 
         tailcall_optimization_loop: while (maybe_next) |e| {
             if (self.exit_code) |_| {
@@ -280,7 +281,11 @@ pub const Interpreter = struct {
                         ExprValue.env => |target_env| {
                             if (args_slice.len == 0 or (args_slice[0].val != ExprType.sym and args_slice[0].val != ExprType.lst)) {
                                 try self.printErrorFmt(&e.src, "Missing symbol or call in environment lookup: ", .{});
-                                try args_slice[0].print();
+                                if (args_slice.len > 0) {
+                                    try args_slice[0].print();
+                                } else {
+                                    try self.printErrorFmt(&e.src, "[no argument]\n", .{});
+                                }
                                 return ExprErrors.AlreadyReported;
                             }
 
@@ -363,6 +368,7 @@ pub const Interpreter = struct {
                                     return &intrinsics.expr_atom_nil;
                                 };
                                 if (self.has_errors) {
+                                    std.debug.print("--- There are errors\n", .{});
                                     return &intrinsics.expr_atom_nil;
                                 }
                             }

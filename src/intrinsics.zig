@@ -1330,9 +1330,9 @@ pub fn stdClone(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 }
 
 /// Loop from n to m or until &break is encountered
-/// (loop '(0 9) body goes here) -> loops 10 times
-/// (loop '(9 0) body goes here) -> loops 10 times
-/// (loop idx '(9 0) body goes here) -> loops 10 times, current iteration count goes into the idx variable
+/// (loop '(0 10) body goes here)      -> loops 10 times
+/// (loop '(10 0) body goes here)      -> loops 10 times
+/// (loop 'idx '(10 0) body goes here) -> loops 10 times, current iteration count goes into the idx variable
 /// (loop '() body goes here (if cond &break)) -> loops until &break is encountered
 pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);

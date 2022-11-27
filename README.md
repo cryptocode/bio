@@ -587,6 +587,26 @@ Here's the cond expression from `examples/fizzbuzz-cond.lisp`:
     ((print i "\n"))
 )
 ```
+### Loop
+
+The `loop` function loops from n to m, or until &break is encountered
+
+The current iteration is optionally available in the given induction variable.
+
+```scheme
+; loops 10 times
+(loop '(0 10) (print 'Hi\n))
+
+; loops 10 times counting down
+(loop '(10 0) (print 'Hi\n))
+
+; loops 10 times, current iteration count goes into the idx variable
+; the current iteration is available in the idx variable (you can call it anything)
+(loop 'idx '(0 10) (print "Hi #" idx "\n"))
+
+; loops forever until &break is encountered
+(loop 'idx '() (print "Hi #" idx "\n") (if (= idx 4) &break))
+```
 
 ### begin
 
