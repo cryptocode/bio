@@ -427,6 +427,9 @@
     (assert (= 'c (matrix-set! M2 'x 1 2)))
     (assert (= 'x (matrix-at M2 1 2)))
 
+    ; Trying to set a value outside the matrix returns an error
+    (assert (error? (try (matrix-set! M2 0 200 2) #t #!)))
+
     (print "Tests passed\n")
 
     (var module-name "Test Module")

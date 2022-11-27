@@ -1047,6 +1047,9 @@ Calls a supplied lambda with each consecutive pair in a list.
 ; Update matrix; the old value is returned
 (assert (= 'c (matrix-set! M2 'x 1 2)))
 (assert (= 'x (matrix-at M2 1 2)))
+
+; Trying to set a value outside the matrix returns an error
+(assert (error? (try (matrix-set! M2 0 200 2) #t #!)))
 ```
 
 ### hashmap

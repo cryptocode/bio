@@ -224,13 +224,21 @@
 ))
 
 ; (matrix-set! M 'newvalue 1 2 1)
+; The last index if the offset into the list at the given index (possibly nested lists)
 ; The previous value is returned
+; If a list index doesn't resolve to a list, an error expression is returned
 (var matrix-set! (λ (M value &rest indices)
     (var curlist M)
+    (var err nil)
     (list.iterate (range indices 0 -1) (λ (i)
-        (set! curlist (item-at i curlist))
+        (var next (item-at i curlist))
+        (if (not (list? next)) (begin (set! err (error (string "matrix-set! failed: index " i " does not resolve to a list"))) &break))
+        (set! curlist next)
     ))
-    (item-set (last indices) curlist value)
+
+    (if (error? err)
+        err
+        (item-set (last indices) curlist value))
 ))
 
 (var each-pair (lambda (lst fn)
@@ -492,6 +500,7 @@
 (var typename (lambda (x)
     (cond
         ((list? x) "list")
+        ((error? x) "error")
         ((bool? x) "bool")
         ((number? x) "number")
         ((symbol? x) "symbol")
