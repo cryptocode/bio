@@ -35,6 +35,7 @@ Table of Contents
          * [env and gc](#env-and-gc)
          * [lambda and λ](#lambda-and-λ)
          * [macro](#macro)
+         * [macroexpand](#macroexpand)
          * [self and environment lookups](#self-and-environment-lookups)
          * [&amp;rest](#rest)
          * [quote](#quote)
@@ -46,6 +47,7 @@ Table of Contents
          * [gensym](#gensym)
          * [if](#if)
          * [cond](#cond)
+         * [loop](#loop)
          * [begin](#begin)
          * [try](#try)
          * [error](#error)
@@ -76,7 +78,7 @@ Table of Contents
          * [map](#map)
          * [quicksort](#quicksort)
          * [while macro](#while-macro)
-         * [each](#each)
+         * [list.iterate and each](#listiterate-and-each)
          * [io.read-number](#ioread-number)
          * [typename](#typename-1)
          * [time.now](#timenow)
@@ -587,7 +589,7 @@ Here's the cond expression from `examples/fizzbuzz-cond.lisp`:
     ((print i "\n"))
 )
 ```
-### Loop
+### loop
 
 The `loop` function loops from n to m, or until &break is encountered
 
