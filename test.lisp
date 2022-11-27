@@ -97,6 +97,8 @@
     (assert (= '(1 2 3 4 9) (replace-or-append '(1 2 3 4) 4 9)))
     (assert (= '(1 1 1 1 1) (listof 1 5)))
 
+    (assert (= 9 (reduce-with 0 (lambda (x) (+ x 1)) + '(1 2 3))))
+
     ; Destructuring
     (var stuff '(1 2 3))
     (vars a b c stuff)
@@ -278,7 +280,7 @@
     (hashmap.append! hmlist 'a 2)
     (assert (= (hashmap.get hmlist 'a) '(1 2)))
 
-    ; The 'a entry exists, so the lambda is called, which updates then list
+    ; The 'a entry exists, so the lambda is called, which updates the list
     (hashmap.put-or-apply hmlist 'a 3 (λ (list)
         (assert (= list '(1 2)))
         (item-append! list 3)
@@ -290,7 +292,7 @@
     (assert (contains? hmlist 'a))
     (assert (not (contains? hmlist 'not-there)))
 
-    ; Lambda application
+    ; Immediate lambda application
     (assert (= 11 ((λ (a b) (+ a b)) 5 6)))
 
     ; If with nesting
@@ -381,6 +383,11 @@
     (assert (= (string.split "a,b,c," ",") '(a b c)))
     (assert (= (string.split "a,b;c," ",;") '(a b c)))
     (assert (= (string.split " " ",") (list " ")))
+
+    ; Pair iteration where each pair sums to 6
+    (each-pair '( 1 5 3 3 4 2) (λ (a b)
+        (assert (= 6 (+ a b) ))
+    ))
 
     ; Test reading file by opening ourself and reading the first byte
     (var file (io.open-file "test.lisp"))

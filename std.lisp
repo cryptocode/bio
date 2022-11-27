@@ -214,7 +214,7 @@
 
 ; Multidimensional list access
 ; (var M '( ( (10 11 12) (13 14 15) ) ( (16 17 18) (19 20 21) ) ) )
-; (matrix-at M 0 1 2) -> 2
+; (matrix-at M 0 1 2) -> 15
 (var matrix-at (λ (M &rest indices)
     (var res M)
     (list.iterate indices (λ (i)
@@ -223,7 +223,7 @@
     res
 ))
 
-; (matrix-set M 'newvalue 1 2 1)
+; (matrix-set! M 'newvalue 1 2 1)
 ; The previous value is returned
 (var matrix-set! (λ (M value &rest indices)
     (var curlist M)

@@ -1,8 +1,8 @@
 <img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
 
-Bio is an experimental Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
+Bio is an experimental Lisp dialect similar to Scheme, with an interpreter written in [Zig](https://ziglang.org)
 
-The language is Scheme inspired and features macros, garbage collection, error handling, an object/module facility, and comes with a small standard library.
+Features include macros, garbage collection, error handling, an object/module facility, and a standard library.
 
 A description of the project is available at [dev.to](https://dev.to/stein/bio-all-your-parentheses-are-belong-to-us-25lo)
 
@@ -79,6 +79,10 @@ Table of Contents
          * [quicksort](#quicksort)
          * [while macro](#while-macro)
          * [list.iterate and each](#listiterate-and-each)
+         * [reduce-with](#reduce-with)
+         * [each-pair](#each-pair)
+         * [matrix functions](#matrix-functions)
+         * [hashmap](#hashmap)
          * [io.read-number](#ioread-number)
          * [typename](#typename-1)
          * [time.now](#timenow)
@@ -997,6 +1001,103 @@ The `list.iterate` function allows for convenient iteration of lists. The first 
 ))
 
 (2 4 6 8 10 12)
+```
+
+### reduce-with
+
+Signature: `(reduce-with initial fn op list)`
+
+Calls `op` on every item in `list`, but only after applying the function `fn` to the item.
+
+```scheme
+(reduce-with 0 (lambda (x) (+ x 1)) + '(1 2 3))
+
+9
+```
+
+This works like this:
+
+* start with the list `'(1 2 3)`
+* apply the lambda which adds 1 to each element, leaving `'(2 3 4)`
+* reduce to a single number `9` using `+` with the initial number `0`
+
+### each-pair
+
+Calls a supplied lambda with each consecutive pair in a list.
+
+```scheme
+; Pair iteration where each pair 1 5, 3 3 and 4 2 all sum to 6
+(each-pair '(1 5 3 3 4 2)
+    (λ (a b)
+        (assert (= 6 (+ a b)))))
+```
+
+### matrix functions
+
+```scheme
+; Multidimensional list (matrix) access
+(var M '(((10 11 12) (13 14 15)) ((16 17 18) (19 20 21))))
+(assert (= 20 (matrix-at M 1 1 1)))
+(assert (= nil (matrix-at M 1 1 100)))
+(assert (= '(10 11 12) (matrix-at M 0 0)))
+
+(var M2 '( (1 2 3 4) (a b c d)))
+(assert (= 'c (matrix-at M2 1 2)))
+
+; Update matrix; the old value is returned
+(assert (= 'c (matrix-set! M2 'x 1 2)))
+(assert (= 'x (matrix-at M2 1 2)))
+```
+
+### hashmap
+
+The are numerous hashmap related functions available:
+
+```scheme
+(var mymap (hashmap.new ("1" 2) (3 4)))
+(assert (hashmap? mymap))
+(assert (= (len mymap) 2))
+(hashmap.put mymap 5 6)
+(hashmap.put mymap 7 "Initial entry")
+(var initial-entry (hashmap.put mymap 7 "Another entry"))
+(assert (= initial-entry "Initial entry"))
+(assert (= (len mymap) 4))
+(assert (= (hashmap.get mymap 7) "Another entry"))
+(hashmap.remove mymap 7)
+(assert (= (hashmap.get mymap 7) nil))
+(assert (= (len mymap) 3))
+
+(var keys '())
+(var vals '())
+(hashmap.iterate mymap (λ (k v)
+    (item-append! keys k)
+    (item-append! vals v)
+))
+(assert (= '(1 3 5) keys))
+(assert (= '(2 4 6) vals))
+
+(var count-removed (hashmap.clear mymap))
+(assert (= count-removed 3))
+(assert (= (len mymap) 0))
+
+; k -> '()
+(var hmlist (hashmap.new))
+(hashmap.append! hmlist 'a 1)
+(hashmap.append! hmlist 'a 2)
+(assert (= (hashmap.get hmlist 'a) '(1 2)))
+
+; The 'a entry exists, so the lambda is called, which updates the list
+(hashmap.put-or-apply hmlist 'a 3 (λ (list)
+    (assert (= list '(1 2)))
+    (item-append! list 3)
+))
+
+(assert (= (hashmap.get hmlist 'a) '(1 2 3)))
+(assert (= (hashmap.maybe-put hmlist 'a '(5 5 5)) '(1 2 3)))
+(assert (= (hashmap.maybe-put hmlist 'b '(5 5 5)) '(5 5 5)))
+
+(assert (contains? hmlist 'a))
+(assert (not (contains? hmlist 'not-there)))
 ```
 
 ### io.read-number

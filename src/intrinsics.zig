@@ -127,8 +127,10 @@ pub fn requireMinimumArgCount(args_required: usize, args: []const *Expr) !void {
 
 pub fn requireType(ev: *Interpreter, expr: *Expr, etype: ExprType) !void {
     if (expr.val != etype) {
-        try ev.printErrorFmt(&expr.src, "Expected {}, got argument type: {}, actual value:\n", .{ etype, std.meta.activeTag(expr.val) });
-        try expr.print();
+        const str = try expr.toStringAlloc();
+        defer mem.allocator.free(str);
+
+        try ev.printErrorFmt(&expr.src, "Expected {}, got argument type: {}, actual value: {s}\n", .{ etype, std.meta.activeTag(expr.val), str });
         return ExprErrors.AlreadyReported;
     }
 }
@@ -304,6 +306,11 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     try requireExactArgCount(1, args);
     if ((try ev.eval(env, args[0])) != &expr_atom_true) {
         try std.io.getStdOut().writer().print("Assertion failed {s} line {d}\n", .{ args[0].src.file, args[0].src.line });
+
+        const str = try args[0].toStringAlloc();
+        defer mem.allocator.free(str);
+        try std.io.getStdOut().writer().print("    Expression: {s}\n", .{str});
+
         std.process.exit(0);
     }
     return &expr_atom_true;
