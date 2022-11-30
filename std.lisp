@@ -232,7 +232,10 @@
     (var err nil)
     (list.iterate (range indices 0 -1) (λ (i)
         (var next (item-at i curlist))
-        (if (not (list? next)) (begin (set! err (error (string "matrix-set! failed: index " i " does not resolve to a list"))) &break))
+        (if (not (list? next))
+            (begin
+                (set! err (error (string "matrix-set! failed: index " i " does not resolve to a list")))
+                &break))
         (set! curlist next)
     ))
 

@@ -129,7 +129,7 @@ pub const Expr = struct {
                     try bufWriter.writeAll(")");
                 }
                 try bufWriter.writeAll(")");
-                return buf.toOwnedSlice();
+                return try buf.toOwnedSlice();
             },
         }
     }

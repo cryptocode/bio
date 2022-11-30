@@ -544,7 +544,7 @@ pub const Interpreter = struct {
             return ExprErrors.MissingRightParen;
         }
 
-        return expr.toOwnedSlice();
+        return try expr.toOwnedSlice();
     }
 
     /// REPL

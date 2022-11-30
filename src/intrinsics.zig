@@ -160,7 +160,11 @@ pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
 
         var file = try mem.allocator.create(std.fs.File);
         errdefer mem.allocator.destroy(file);
-        file.* = std.fs.createFileAbsolute(path, .{ .truncate = false, .read = true }) catch |err| {
+
+        const absolute_path = try std.fs.realpathAlloc(mem.allocator, path);
+        defer mem.allocator.free(absolute_path);
+
+        file.* = std.fs.createFileAbsolute(absolute_path, .{ .truncate = false, .read = true }) catch |err| {
             try ev.printErrorFmt(&filename_expr.src, "Could not open file: {}\n", .{err});
             return err;
         };
