@@ -49,6 +49,7 @@ pub const Interpreter = struct {
         try instance.env.put("hashmap?", &intrinsics.expr_std_is_hashmap);
         try instance.env.put("error?", &intrinsics.expr_std_is_err);
         try instance.env.put("callable?", &intrinsics.expr_std_is_callable);
+        try instance.env.put("opaque?", &intrinsics.expr_std_is_opaque);
         try instance.env.put("lowercase?", &intrinsics.expr_std_is_lowercase);
         try instance.env.put("uppercase?", &intrinsics.expr_std_is_uppercase);
         try instance.env.put("lowercase", &intrinsics.expr_std_lowercase);
@@ -502,7 +503,7 @@ pub const Interpreter = struct {
                         if (char == ';' and only_seen_ws) {
                             continue :reader_loop;
                         }
-                        only_seen_ws = only_seen_ws and std.ascii.isSpace(char);
+                        only_seen_ws = only_seen_ws and std.ascii.isWhitespace(char);
 
                         if (char == '"') {
                             inside_string = !inside_string;

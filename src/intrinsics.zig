@@ -42,6 +42,7 @@ pub var expr_std_is_list = Expr{ .val = ExprValue{ .fun = stdIsList } };
 pub var expr_std_is_hashmap = Expr{ .val = ExprValue{ .fun = stdIsHashmap } };
 pub var expr_std_is_err = Expr{ .val = ExprValue{ .fun = stdIsError } };
 pub var expr_std_is_callable = Expr{ .val = ExprValue{ .fun = stdIsCallable } };
+pub var expr_std_is_opaque = Expr{ .val = ExprValue{ .fun = stdIsOpaque } };
 pub var expr_std_is_lowercase = Expr{ .val = ExprValue{ .fun = stdIsLowercase } };
 pub var expr_std_is_uppercase = Expr{ .val = ExprValue{ .fun = stdIsUppercase } };
 pub var expr_std_lowercase = Expr{ .val = ExprValue{ .fun = stdLowercase } };
@@ -591,6 +592,14 @@ pub fn stdIsCallable(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
         ExprType.fun, ExprType.lam, ExprType.mac => &expr_atom_true,
+        else => &expr_atom_false,
+    };
+}
+
+pub fn stdIsOpaque(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    const arg = try ev.eval(env, args[0]);
+    return switch (arg.val) {
+        ExprType.any => &expr_atom_true,
         else => &expr_atom_false,
     };
 }

@@ -508,6 +508,7 @@
         ((number? x) "number")
         ((symbol? x) "symbol")
         ((callable? x) "function")
+        ((opaque? x) "opaque")
         ("unknown")
     )
 ))
