@@ -5,8 +5,9 @@ const mem = @import("gc.zig");
 const sourcelocation = @import("sourcelocation.zig");
 const SourceLocation = sourcelocation.SourceLocation;
 
+pub const IntrinsicFn = *const fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr;
 pub const ExprErrors = error{ AlreadyReported, MissingRightParen, UnexpectedRightParen, ExpectedNumber, ExpectedBool, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof };
-pub const ExprType = enum { sym, num, lst, map, lam, mac, fun, env, err, any };
+pub const ExprType = enum(u8) { sym, num, lst, map, lam, mac, fun, env, err, any };
 pub const ExprValue = union(ExprType) {
     sym: []const u8,
     num: f64,
@@ -14,7 +15,7 @@ pub const ExprValue = union(ExprType) {
     map: std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true),
     lam: std.ArrayList(*Expr),
     mac: std.ArrayList(*Expr),
-    fun: *const fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr,
+    fun: IntrinsicFn,
     env: *Env,
     err: *Expr,
     any: usize,
