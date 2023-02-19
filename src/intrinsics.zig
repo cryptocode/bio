@@ -347,7 +347,7 @@ pub fn stdString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
 /// Implements (print expr...)
 pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    for (args) |expr, index| {
+    for (args, 0..) |expr, index| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
         defer mem.allocator.free(rendered);
@@ -479,7 +479,7 @@ fn order(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!std.math.Ord
     } else if (op1.val == ExprType.lst and op2.val == ExprType.lst) {
         var res = std.math.order(op1.val.lst.items.len, op2.val.lst.items.len);
         if (res == std.math.Order.eq) {
-            for (op1.val.lst.items) |item, index| {
+            for (op1.val.lst.items, 0..) |item, index| {
                 res = try order(ev, env, &.{ item, op2.val.lst.items[index] });
                 if (res != std.math.Order.eq) {
                     return res;
@@ -882,7 +882,7 @@ pub fn stdSum(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 
 pub fn stdSub(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var res: f64 = 0;
-    for (args) |expr, index| {
+    for (args, 0..) |expr, index| {
         const arg = try ev.eval(env, expr);
         switch (arg.val) {
             ExprType.num => |num| {
@@ -915,7 +915,7 @@ pub fn stdMul(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 
 pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var res: f64 = 0;
-    for (args) |expr, index| {
+    for (args, 0..) |expr, index| {
         const arg = try ev.eval(env, expr);
         switch (arg.val) {
             ExprType.num => |num| {
@@ -1502,7 +1502,7 @@ pub fn stdVars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
         return ExprErrors.AlreadyReported;
     }
 
-    for (list.val.lst.items) |item, i| {
+    for (list.val.lst.items, 0..) |item, i| {
         try env.putWithSymbol(args[i], item);
     }
 

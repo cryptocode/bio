@@ -11,6 +11,7 @@ pub const ExprType = enum(u8) { sym, num, lst, map, lam, mac, fun, env, err, any
 pub const ExprValue = union(ExprType) {
     sym: []const u8,
     num: f64,
+    // TODO: turn containers into pointers to make ExprValue smaller
     lst: std.ArrayList(*Expr),
     map: std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true),
     lam: std.ArrayList(*Expr),
@@ -18,7 +19,10 @@ pub const ExprValue = union(ExprType) {
     fun: IntrinsicFn,
     env: *Env,
     err: *Expr,
+    /// Type-erased value, such as a file descriptor or a pointer to a struct
     any: usize,
+    // Compiled expression's virtual machine bytecode, i.e. the result of (compile expr)
+    // vmc: []const u8,
 };
 
 /// A Bio expression with a value and an optional environment (lambda expressions
@@ -98,7 +102,7 @@ pub const Expr = struct {
                 var bufWriter = buf.writer();
 
                 try bufWriter.writeAll("(");
-                for (lst.items) |item, index| {
+                for (lst.items, 0..) |item, index| {
                     const itemBuf = try item.toStringAlloc();
                     defer mem.allocator.free(itemBuf);
                     try bufWriter.writeAll(itemBuf);

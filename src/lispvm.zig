@@ -15,6 +15,8 @@ pub const Opcode = enum(u8) {
     add,
     /// Print the top value on the stack
     print,
+    /// Exit the process with an exit code
+    exit,
 };
 
 pub const Op = union(Opcode) {
@@ -36,6 +38,8 @@ pub const Op = union(Opcode) {
     pop: void,
     add: void,
     print: void,
+    // Exit the process with an exit code
+    exit: u8,
 };
 
 /// Execution state
@@ -81,11 +85,14 @@ pub const VM = struct {
                         const value = self.stack.pop();
                         sum += value.num;
                     }
-                    try self.stack.append(.{ .num = sum});
+                    try self.stack.append(.{ .num = sum });
                 },
                 .print => {
                     const value = self.stack.pop();
                     std.debug.print("\nOn stack: {}\n", .{value});
+                },
+                .exit => {
+                    std.os.exit(op.exit);
                 },
             }
         }
@@ -97,16 +104,13 @@ pub const VM = struct {
         for (self.ops.items) |op| {
             try writer.writeIntLittle(u8, @enumToInt(op));
             switch (op) {
-                .call_function => {},
-                .call_intrinsic => {},
-                .gc_collect => {},
-                .order => {},
                 .push => |val| {
                     try serializeValue(val, writer);
                 },
-                .pop => {},
-                .add => {},
-                .print => {},
+                .exit => {
+                    try writer.writeByte(op.exit);
+                },
+                else => {},
             }
         }
     }
@@ -142,22 +146,39 @@ pub const VM = struct {
                 else => return err,
             };
             switch (op) {
-                .call_function => {},
-                .call_intrinsic => {},
-                .gc_collect => {},
-                .order => {},
                 .push => {
                     const val = try deserializeValue(reader);
-                    std.debug.print("::push num {}\n", .{val.num});
+                    _ = val;
                 },
-                .pop => {},
-                .add => {
-                    std.debug.print("::add\n", .{});
+                .exit => {
+                    const exit = try reader.readByte();
+                    _ = exit;
                 },
-                .print => {
-                    std.debug.print("::print\n", .{});
-                },
+                else => {},
             }
+        }
+    }
+
+    pub fn disassemble(self: *@This(), writer: anytype) !void {
+        for (self.ops.items) |op| {
+            //try writer.writeIntLittle(u8, @enumToInt(op));
+            try writer.print("{s} ", .{std.meta.tagName(op)});
+            switch (op) {
+                .push => |val| {
+                    try writer.print("{s} ", .{std.meta.tagName(val)});
+                    switch (val) {
+                        .num => {
+                            try writer.print("{}", .{val.num});
+                        },
+                        else => {},
+                    }
+                },
+                .exit => {
+                    try writer.print("{}", .{op.exit});
+                },
+                else => {},
+            }
+            try writer.print("\n", .{});
         }
     }
 };
@@ -168,6 +189,7 @@ test "vm-1" {
     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
     try vm.ops.append(.{ .add = {} });
     try vm.ops.append(.{ .print = {} });
+    //try vm.ops.append(.{ .exit = 0 });
     try vm.run();
 }
 
@@ -177,29 +199,25 @@ test "serialize-1" {
     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
     try vm.ops.append(.{ .add = {} });
     try vm.ops.append(.{ .print = {} });
-    var bytes = std.ArrayList(u8).init(std.testing.allocator);    
+    try vm.ops.append(.{ .exit = 0 });
+
+    var bytes = std.ArrayList(u8).init(std.testing.allocator);
     defer bytes.deinit();
     try vm.serialize(std.heap.page_allocator, bytes.writer());
-    
+
     // Print all bytes as hex
     for (bytes.items) |b| {
         std.debug.print("{x} ", .{b});
     }
     std.debug.print("\n", .{});
     std.debug.print("Deserialize\n", .{});
-    
+
     var fbs = std.io.fixedBufferStream(bytes.items);
     try vm.deserialize(fbs.reader());
-}
 
-// test "deserialize-1" {
-//     var vm = VM.init();
-//     try vm.ops.append(.{ .push = .{ .num = 1.0 } });
-//     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
-//     try vm.ops.append(.{ .add = {} });
-//     try vm.ops.append(.{ .print = {} });
-//     // const bytes = vm.ops.toBytes();
-//     // std.debug.print("bytes: {}\n", .{bytes});
-//     // const ops = std.ArrayList(Op).fromBytes(bytes);
-//     // std.debug.print("ops: {}\n", .{ops});    
-// }
+    std.debug.print("========================\n", .{});
+    std.debug.print("Disassembly:\n", .{});
+    std.debug.print("========================\n", .{});
+    try vm.disassemble(std.io.getStdOut().writer());
+    std.debug.print("========================\n", .{});
+}
