@@ -322,7 +322,7 @@ pub const Interpreter = struct {
                             var logical_arg_count = args_slice.len;
 
                             // Bind arguments to the new environment
-                            for (fun.items[0].val.lst.items) |param, index| {
+                            for (fun.items[0].val.lst.items, 0..) |param, index| {
                                 if (param.val == ExprType.sym) {
                                     if (param == &intrinsics.expr_atom_rest) {
                                         formal_param_count -= 1;

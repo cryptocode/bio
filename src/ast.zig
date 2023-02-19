@@ -97,7 +97,7 @@ pub const Expr = struct {
                 var bufWriter = buf.writer();
 
                 try bufWriter.writeAll("(");
-                for (lst.items) |item, index| {
+                for (lst.items, 0..) |item, index| {
                     const itemBuf = try item.toStringAlloc();
                     defer mem.allocator.free(itemBuf);
                     try bufWriter.writeAll(itemBuf);

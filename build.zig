@@ -2,16 +2,20 @@ const std = @import("std");
 
 pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable("bio", "src/main.zig");
+    const exe = b.addExecutable(.{
+        .name = "bio",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+
     exe.linkLibC();
     if (!target.isWindows()) {
         exe.addCSourceFile("deps/linenoise.c", &[_][]const u8{"-std=c99"});
         exe.addIncludePath("deps");
     }
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
     exe.setOutputDir(".");
     exe.install();
 
