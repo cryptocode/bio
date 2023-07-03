@@ -70,7 +70,7 @@ const Linenoise = struct {
                 self.index = 0;
             }
 
-            copy_count = std.math.min(self.remaining, dest.len);
+            copy_count = @min(self.remaining, dest.len);
             if (copy_count > 0) std.mem.copy(u8, dest, self.line.?[self.index .. self.index + copy_count]);
             self.remaining -= copy_count;
             self.index += copy_count;

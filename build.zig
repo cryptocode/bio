@@ -6,7 +6,7 @@ pub fn build(b: *std.build.Builder) void {
 
     const exe = b.addExecutable(.{
         .name = "bio",
-        .root_source_file = .{.path = "src/main.zig"},
+        .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
@@ -16,10 +16,12 @@ pub fn build(b: *std.build.Builder) void {
         exe.addCSourceFile("deps/linenoise.c", &[_][]const u8{"-std=c99"});
         exe.addIncludePath("deps");
     }
-    exe.setOutputDir(".");
-    exe.install();
 
-    const run_cmd = exe.run();
+    var inst = b.addInstallArtifact(exe);
+    inst.dest_dir = .{ .custom = "." };
+    b.getInstallStep().dependOn(&inst.step);
+
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
