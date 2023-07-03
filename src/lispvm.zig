@@ -102,7 +102,7 @@ pub const VM = struct {
     pub fn serialize(self: *@This(), alloc: std.mem.Allocator, writer: anytype) !void {
         _ = alloc;
         for (self.ops.items) |op| {
-            try writer.writeIntLittle(u8, @enumToInt(op));
+            try writer.writeIntLittle(u8, @intFromEnum(op));
             switch (op) {
                 .push => |val| {
                     try serializeValue(val, writer);
@@ -116,10 +116,10 @@ pub const VM = struct {
     }
 
     fn serializeValue(val: ast.ExprValue, writer: anytype) !void {
-        try writer.writeIntLittle(u8, @enumToInt(val));
+        try writer.writeIntLittle(u8, @intFromEnum(val));
         switch (val) {
             .num => {
-                try writer.writeIntLittle(u64, @bitCast(u64, val.num));
+                try writer.writeIntLittle(u64, @as(u64, @bitCast(val.num)));
             },
             else => {},
         }
@@ -129,7 +129,7 @@ pub const VM = struct {
         const kind = try reader.readEnum(ast.ExprType, std.builtin.Endian.Little);
         switch (kind) {
             .num => {
-                const num = @bitCast(f64, try reader.readIntLittle(u64));
+                const num = @as(f64, @bitCast(try reader.readIntLittle(u64)));
                 return .{ .num = num };
             },
             else => {
@@ -162,10 +162,10 @@ pub const VM = struct {
     pub fn disassemble(self: *@This(), writer: anytype) !void {
         for (self.ops.items) |op| {
             //try writer.writeIntLittle(u8, @enumToInt(op));
-            try writer.print("{s} ", .{std.meta.tagName(op)});
+            try writer.print("{s} ", .{@tagName(op)});
             switch (op) {
                 .push => |val| {
-                    try writer.print("{s} ", .{std.meta.tagName(val)});
+                    try writer.print("{s} ", .{@tagName(val)});
                     switch (val) {
                         .num => {
                             try writer.print("{}", .{val.num});
