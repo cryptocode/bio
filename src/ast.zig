@@ -27,9 +27,9 @@ pub const Expr = struct {
     pub const HashUtil = struct {
         pub fn hash(_: HashUtil, key: *Expr) u32 {
             if (key.val == ExprType.sym) {
-                return @truncate(u32, std.hash.Wyhash.hash(0, key.val.sym));
+                return @as(u32, @truncate(std.hash.Wyhash.hash(0, key.val.sym)));
             } else if (key.val == ExprType.num) {
-                return @truncate(u32, @floatToInt(u64, key.val.num));
+                return @as(u32, @truncate(@as(u64, @intFromFloat(key.val.num))));
             }
             @panic("Invalid hash key type");
         }
@@ -148,9 +148,9 @@ pub const Env = struct {
     pub const HashUtil = struct {
         pub fn hash(_: HashUtil, key: *Expr) u32 {
             if (key.val == ExprType.sym) {
-                return @truncate(u32, std.hash.Wyhash.hash(0, key.val.sym));
+                return @as(u32, @truncate(std.hash.Wyhash.hash(0, key.val.sym)));
             } else if (key.val == ExprType.num) {
-                return @truncate(u32, @floatToInt(u64, key.val.num));
+                return @as(u32, @truncate(@as(u64, @intFromFloat(key.val.num))));
             }
             @panic("Invalid hash key type");
         }
@@ -262,7 +262,7 @@ fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*E
                 }
                 const internalizable = @floor(num) == num and !std.math.isInf(num) and num > -1024 and num < 1024;
                 if (internalizable) {
-                    if (mem.interned_nums.get(@floatToInt(i16, num))) |expr| {
+                    if (mem.interned_nums.get(@as(i16, @intFromFloat(num)))) |expr| {
                         return expr;
                     }
                 }
@@ -270,7 +270,7 @@ fn makeAtomImplementation(literal: []const u8, take_ownership: bool) anyerror!*E
                 var expr = try Expr.create(false);
                 expr.val = ExprValue{ .num = num };
                 if (internalizable) {
-                    try mem.interned_nums.put(mem.allocator, @floatToInt(i16, num), expr);
+                    try mem.interned_nums.put(mem.allocator, @as(i16, @intFromFloat(num)), expr);
                 } else {
                     try mem.gc.registered_expr.append(expr);
                 }

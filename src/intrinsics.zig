@@ -142,7 +142,7 @@ pub fn requireType(ev: *Interpreter, expr: *Expr, etype: ExprType) !void {
 pub fn stdExit(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     var exit_code: u8 = 0;
     if (args.len > 0 and args[0].val == ExprType.num) {
-        exit_code = @floatToInt(u8, args[0].val.num);
+        exit_code = @as(u8, @intFromFloat(args[0].val.num));
     }
 
     ev.exit_code = exit_code;
@@ -170,7 +170,7 @@ pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
             return err;
         };
         var expr = try Expr.create(true);
-        expr.val = ExprValue{ .any = @ptrToInt(file) };
+        expr.val = ExprValue{ .any = @intFromPtr(file) };
         return expr;
     }
     return &expr_atom_nil;
@@ -181,7 +181,7 @@ pub fn stdFileClose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
-    const file = @intToPtr(*std.fs.File, file_ptr.val.any);
+    const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
     file.close();
     mem.allocator.destroy(file);
     return &expr_atom_nil;
@@ -192,7 +192,7 @@ pub fn stdFileReadByte(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
-    const file = @intToPtr(*std.fs.File, file_ptr.val.any);
+    const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
     if (file.reader().readByte()) |byte| {
         return ast.makeAtomByDuplicating(&.{byte});
     } else |e| switch (e) {
@@ -208,7 +208,7 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
         try requireExactArgCount(1, args);
         const file_ptr = try ev.eval(env, args[0]);
         try requireType(ev, file_ptr, ExprType.any);
-        const file = @intToPtr(*std.fs.File, file_ptr.val.any);
+        const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
 
         reader = file.reader();
     }
@@ -235,7 +235,7 @@ pub fn stdFileWriteLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerr
         try requireExactArgCount(2, args);
         const file_ptr = try ev.eval(env, args[0]);
         try requireType(ev, file_ptr, ExprType.any);
-        const file = @intToPtr(*std.fs.File, file_ptr.val.any);
+        const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
         try file.seekFromEnd(0);
 
         writer = file.writer();
@@ -719,15 +719,15 @@ pub fn stdItemAt(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     const index_arg = try ev.eval(env, args[0]);
     const container = try ev.eval(env, args[1]);
     try requireType(ev, index_arg, ExprType.num);
-    const index = @floatToInt(isize, index_arg.val.num);
+    const index = @as(isize, @intFromFloat(index_arg.val.num));
     switch (container.val) {
         ExprType.lst => |*list| {
-            return if (index >= 0 and index < list.items.len) list.items[@intCast(usize, index)] else &expr_atom_nil;
+            return if (index >= 0 and index < list.items.len) list.items[@as(usize, @intCast(index))] else &expr_atom_nil;
         },
         ExprType.sym => |sym| {
             if (index >= 0 and index < sym.len) {
                 //return try ast.makeListExpr(&.{ &expr_atom_quote, try ast.makeAtomByDuplicating(&.{sym[@intCast(usize, index)]}) });
-                return try ast.makeAtomByDuplicating(&.{sym[@intCast(usize, index)]});
+                return try ast.makeAtomByDuplicating(&.{sym[@as(usize, @intCast(index))]});
             } else return &expr_atom_nil;
         },
         else => return &expr_atom_nil,
@@ -746,11 +746,11 @@ pub fn stdItemSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
     try requireType(ev, listArg, ExprType.lst);
 
     // Index may be negative to prepend, so we use isize
-    const index = @floatToInt(isize, indexArg.val.num);
+    const index = @as(isize, @intFromFloat(indexArg.val.num));
     var list = &listArg.val.lst;
     if (index >= 0 and index < list.items.len) {
-        var old = list.items[@intCast(usize, index)];
-        list.items[@intCast(usize, index)] = newItem;
+        var old = list.items[@as(usize, @intCast(index))];
+        list.items[@as(usize, @intCast(index))] = newItem;
         return old;
     } else if (index >= list.items.len) {
         try list.append(newItem);
@@ -770,10 +770,10 @@ pub fn stdItemRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     try requireType(ev, listArg, ExprType.lst);
 
     // Index may be negative to prepend, so we use isize
-    const index = @floatToInt(isize, indexArg.val.num);
+    const index = @as(isize, @intFromFloat(indexArg.val.num));
     var list = &listArg.val.lst;
     if (index >= 0 and index < list.items.len) {
-        return list.swapRemove(@intCast(usize, index));
+        return list.swapRemove(@as(usize, @intCast(index)));
     }
     return &expr_atom_nil;
 }
@@ -787,7 +787,7 @@ pub fn stdRotateLeft(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     try requireType(ev, listArg, ExprType.lst);
     try requireType(ev, amountArg, ExprType.num);
 
-    std.mem.rotate(*Expr, listArg.val.lst.items, @floatToInt(usize, amountArg.val.num));
+    std.mem.rotate(*Expr, listArg.val.lst.items, @as(usize, @intFromFloat(amountArg.val.num)));
     return listArg;
 }
 
@@ -799,19 +799,19 @@ pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     const listArg = try ev.eval(env, args[0]);
     try requireType(ev, listArg, ExprType.lst);
     const list = &listArg.val.lst;
-    const size = @intCast(isize, list.items.len);
+    const size = @as(isize, @intCast(list.items.len));
 
     if (args.len > 1) {
         const startArg = try ev.eval(env, args[1]);
         try requireType(ev, startArg, ExprType.num);
 
-        var start = @floatToInt(isize, startArg.val.num);
+        var start = @as(isize, @intFromFloat(startArg.val.num));
         var end = val: {
             if (args.len > 2) {
                 const endArg = try ev.eval(env, args[2]);
                 try requireType(ev, endArg, ExprType.num);
-                break :val std.math.min(@intCast(isize, list.items.len), @floatToInt(isize, endArg.val.num));
-            } else break :val @intCast(isize, list.items.len);
+                break :val @min(@as(isize, @intCast(list.items.len)), @as(isize, @intFromFloat(endArg.val.num)));
+            } else break :val @as(isize, @intCast(list.items.len));
         };
 
         if (start < 0) {
@@ -822,7 +822,7 @@ pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
         }
         var res = try ast.makeListExpr(null);
         if (size > 0 and end > 0 and start >= 0 and start < size and end <= size) {
-            try res.val.lst.appendSlice(list.items[@intCast(usize, start)..@intCast(usize, end)]);
+            try res.val.lst.appendSlice(list.items[@as(usize, @intCast(start))..@as(usize, @intCast(end))]);
             return res;
         } else {
             return &expr_atom_nil;
@@ -947,7 +947,7 @@ pub fn stdPow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 
 pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env, args };
-    return ast.makeNumExpr(@intToFloat(f64, std.time.milliTimestamp()));
+    return ast.makeNumExpr(@as(f64, @floatFromInt(std.time.milliTimestamp())));
 }
 
 /// Checks for presence by value comparison in hashmaps, lists and symbols; returns #t or #f accordingly
@@ -958,7 +958,7 @@ pub fn stdContains(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     try requireExactArgCount(2, args);
     const expr = try ev.eval(env, args[0]);
     const needle = try ev.eval(env, args[1]);
-    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@intToFloat(f64, 0));
+    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@as(f64, @floatFromInt(0)));
     switch (expr.val) {
         ExprType.sym => return if (std.mem.indexOf(u8, expr.val.sym, needle.val.sym)) |_| &expr_atom_true else &expr_atom_false,
         ExprType.lst => {
@@ -982,14 +982,14 @@ pub fn stdContains(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
 pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const expr = try ev.eval(env, args[0]);
-    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@intToFloat(f64, 0));
+    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@as(f64, @floatFromInt(0)));
     switch (expr.val) {
-        ExprType.sym => return try ast.makeNumExpr(@intToFloat(f64, expr.val.sym.len)),
+        ExprType.sym => return try ast.makeNumExpr(@as(f64, @floatFromInt(expr.val.sym.len))),
         ExprType.lst => {
-            return try ast.makeNumExpr(@intToFloat(f64, expr.val.lst.items.len));
+            return try ast.makeNumExpr(@as(f64, @floatFromInt(expr.val.lst.items.len)));
         },
         ExprType.map => {
-            return try ast.makeNumExpr(@intToFloat(f64, expr.val.map.count()));
+            return try ast.makeNumExpr(@as(f64, @floatFromInt(expr.val.map.count())));
         },
         else => {
             try ev.printErrorFmt(&expr.src, "len function only works on lists, maps and symbols\n", .{});
@@ -1332,7 +1332,7 @@ pub fn stdHashmapClear(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
     try requireExactArgCount(1, args);
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
-    const count = try ast.makeNumExpr(@intToFloat(f64, m.val.map.count()));
+    const count = try ast.makeNumExpr(@as(f64, @floatFromInt(m.val.map.count())));
     m.val.map.clearAndFree();
     return count;
 }
@@ -1389,8 +1389,8 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
         var second = try ev.eval(env, critera.?.val.lst.items[1]);
         try requireType(ev, first, ExprType.num);
         try requireType(ev, second, ExprType.num);
-        start = std.math.min(first.val.num, second.val.num);
-        end = std.math.max(first.val.num, second.val.num);
+        start = @min(first.val.num, second.val.num);
+        end = @max(first.val.num, second.val.num);
 
         // Countdown?
         if (first.val.num > second.val.num) {

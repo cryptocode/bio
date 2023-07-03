@@ -125,7 +125,7 @@ pub const Interpreter = struct {
     pub fn deinit(_: *Interpreter) void {
         mem.gc.deinit();
         SourceLocation.deinitStack();
-        if (!@import("builtin").is_test and mem.gpa.deinit()) {
+        if (!@import("builtin").is_test and mem.gpa.deinit() == .ok) {
             std.io.getStdOut().writer().print("Memory leaks detected\n", .{}) catch unreachable;
         }
     }
@@ -149,7 +149,7 @@ pub const Interpreter = struct {
 
     /// Print a formatted error message, prefixed with source location
     pub fn printErrorFmt(self: *Interpreter, src_loc: *SourceLocation, comptime fmt: []const u8, args: anytype) !void {
-        try std.io.getStdOut().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, std.math.max(1, src_loc.line) });
+        try std.io.getStdOut().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, @max(1, src_loc.line) });
         try std.io.getStdOut().writer().print(fmt, args);
         // for (SourceLocation.stack.items) |loc| {
         //     try std.io.getStdOut().writer().print("    {s}:{d}", .{loc.file, std.math.max(1, loc.line)});
