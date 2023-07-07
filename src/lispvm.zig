@@ -159,9 +159,13 @@ pub const VM = struct {
         }
     }
 
+    /// Assemble text into byte code
+    pub fn assemble(self: *@This(), reader: anytype) void {
+        _ = .{self, reader};
+    }
+
     pub fn disassemble(self: *@This(), writer: anytype) !void {
         for (self.ops.items) |op| {
-            //try writer.writeIntLittle(u8, @enumToInt(op));
             try writer.print("{s} ", .{@tagName(op)});
             switch (op) {
                 .push => |val| {
