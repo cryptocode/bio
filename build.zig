@@ -18,7 +18,6 @@ pub fn build(b: *std.build.Builder) void {
     }
 
     var inst = b.addInstallArtifact(exe);
-    inst.dest_dir = .{ .custom = "." };
     b.getInstallStep().dependOn(&inst.step);
 
     const run_cmd = b.addRunArtifact(exe);

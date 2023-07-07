@@ -125,7 +125,7 @@ pub const Interpreter = struct {
     pub fn deinit(_: *Interpreter) void {
         mem.gc.deinit();
         SourceLocation.deinitStack();
-        if (!@import("builtin").is_test and mem.gpa.deinit() == .ok) {
+        if (!@import("builtin").is_test and mem.gpa.deinit() == .leak) {
             std.io.getStdOut().writer().print("Memory leaks detected\n", .{}) catch unreachable;
         }
     }
