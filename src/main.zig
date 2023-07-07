@@ -14,10 +14,11 @@ pub fn main() !void {
         var args = std.ArrayList(*ast.Expr).init(gc.allocator);
         defer args.deinit();
 
-        // Use path of bio binary for standard library path
-        const pwd = try std.fs.selfExeDirPathAlloc(gc.allocator);
-        defer gc.allocator.free(pwd);
-        const stdpath = try std.fs.path.join(gc.allocator, &[_][]const u8{ pwd, "std.lisp" });
+        // Use current directory for standard library path
+        const cwd_absolute = try std.fs.cwd().realpathAlloc(gc.allocator, ".");
+        defer gc.allocator.free(cwd_absolute);
+
+        const stdpath = try std.fs.path.join(gc.allocator, &[_][]const u8{ cwd_absolute, "std.lisp" });
         defer gc.allocator.free(stdpath);
 
         var stdlib = try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(stdpath) });
