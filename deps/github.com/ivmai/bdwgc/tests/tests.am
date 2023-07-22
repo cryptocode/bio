@@ -1,0 +1,185 @@
+#
+# THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
+# OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
+#
+# Permission is hereby granted to use or copy this program
+# for any purpose, provided the above notices are retained on all copies.
+# Permission to modify the code and to distribute modified code is granted,
+# provided the above notices are retained, and a notice that the code was
+# modified is included with the above copyright notice.
+
+# Common libs to *_LDADD for most tests.
+test_ldadd = $(nodist_libgc_la_OBJECTS) $(top_builddir)/libgc.la \
+            $(EXTRA_TEST_LIBS)
+
+TESTS += gctest$(EXEEXT)
+check_PROGRAMS += gctest
+gctest_SOURCES = tests/gctest.c
+gctest_LDADD = $(test_ldadd)
+if THREADS
+if ENABLE_SHARED
+gctest_LDADD += $(ATOMIC_OPS_LIBS)
+endif
+gctest_LDADD += $(THREADDLLIBS)
+endif
+gctest_DEPENDENCIES = $(top_builddir)/libgc.la
+
+if EMSCRIPTEN
+# Note: because of libtool, you'll need to point your browser to
+# .libs/gctest.html, not gctest.html at topdir.
+check_PROGRAMS += gctest.html
+gctest_html_SOURCES = $(gctest_SOURCES)
+gctest_html_LDADD = $(gctest_LDADD)
+endif
+
+TESTS += hugetest$(EXEEXT)
+check_PROGRAMS += hugetest
+hugetest_SOURCES = tests/huge.c
+hugetest_LDADD = $(test_ldadd)
+
+TESTS += leaktest$(EXEEXT)
+check_PROGRAMS += leaktest
+leaktest_SOURCES = tests/leak.c
+leaktest_LDADD = $(test_ldadd)
+
+TESTS += middletest$(EXEEXT)
+check_PROGRAMS += middletest
+middletest_SOURCES = tests/middle.c
+middletest_LDADD = $(test_ldadd)
+
+TESTS += realloctest$(EXEEXT)
+check_PROGRAMS += realloctest
+realloctest_SOURCES = tests/realloc.c
+realloctest_LDADD = $(test_ldadd)
+
+TESTS += smashtest$(EXEEXT)
+check_PROGRAMS += smashtest
+smashtest_SOURCES = tests/smash.c
+smashtest_LDADD = $(test_ldadd)
+
+TESTS += staticrootstest$(EXEEXT)
+check_PROGRAMS += staticrootstest
+staticrootstest_SOURCES = tests/staticroots.c
+staticrootstest_CFLAGS = -DSTATICROOTSLIB2
+staticrootstest_LDADD = $(nodist_libgc_la_OBJECTS) $(EXTRA_TEST_LIBS) \
+                        libstaticroots_lib_test.la libstaticroots_lib2_test.la
+check_LTLIBRARIES += libstaticroots_lib_test.la libstaticroots_lib2_test.la
+libstaticroots_lib_test_la_SOURCES = tests/staticroots_lib.c
+libstaticroots_lib_test_la_LIBADD = $(test_ldadd)
+libstaticroots_lib_test_la_LDFLAGS = -no-undefined -rpath /nowhere
+libstaticroots_lib_test_la_DEPENDENCIES = $(top_builddir)/libgc.la
+libstaticroots_lib2_test_la_SOURCES = tests/staticroots_lib.c
+libstaticroots_lib2_test_la_LIBADD = $(test_ldadd)
+libstaticroots_lib2_test_la_CFLAGS = -DSTATICROOTSLIB2
+libstaticroots_lib2_test_la_LDFLAGS = -no-undefined -rpath /nowhere
+if ENABLE_SHARED
+staticrootstest_LDADD += $(top_builddir)/libgc.la
+endif
+
+if KEEP_BACK_PTRS
+TESTS += tracetest$(EXEEXT)
+check_PROGRAMS += tracetest
+tracetest_SOURCES = tests/trace.c
+tracetest_LDADD = $(test_ldadd)
+endif
+
+if THREADS
+
+TESTS += atomicopstest$(EXEEXT)
+check_PROGRAMS += atomicopstest
+atomicopstest_SOURCES = tests/atomicops.c
+atomicopstest_LDADD = $(nodist_libgc_la_OBJECTS) $(EXTRA_TEST_LIBS) \
+                $(ATOMIC_OPS_LIBS) $(THREADDLLIBS)
+
+TESTS += initfromthreadtest$(EXEEXT)
+check_PROGRAMS += initfromthreadtest
+initfromthreadtest_SOURCES = tests/initfromthread.c
+initfromthreadtest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+
+TESTS += subthreadcreatetest$(EXEEXT)
+check_PROGRAMS += subthreadcreatetest
+subthreadcreatetest_SOURCES = tests/subthreadcreate.c
+subthreadcreatetest_LDADD = $(test_ldadd)
+if ENABLE_SHARED
+subthreadcreatetest_LDADD += $(ATOMIC_OPS_LIBS)
+endif
+subthreadcreatetest_LDADD += $(THREADDLLIBS)
+
+TESTS += threadkeytest$(EXEEXT)
+check_PROGRAMS += threadkeytest
+threadkeytest_SOURCES = tests/threadkey.c
+threadkeytest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+
+TESTS += threadleaktest$(EXEEXT)
+check_PROGRAMS += threadleaktest
+threadleaktest_SOURCES = tests/threadleak.c
+threadleaktest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+
+endif
+
+if CPLUSPLUS
+TESTS += cpptest$(EXEEXT)
+check_PROGRAMS += cpptest
+cpptest_SOURCES = tests/cpp.cc
+if AVOID_CPP_LIB
+cpptest_LDADD = gc_badalc.o gc_cpp.o $(test_ldadd) $(CXXLIBS)
+else
+cpptest_LDADD = libgccpp.la $(nodist_libgc_la_OBJECTS) \
+                $(EXTRA_TEST_LIBS) $(CXXLIBS)
+## In case of static libraries build, libgc.a is already referenced in
+## dependency_libs attribute of libgccpp.la file.
+if ENABLE_SHARED
+cpptest_LDADD += $(top_builddir)/libgc.la
+endif
+endif
+endif
+
+if ENABLE_DISCLAIM
+
+TESTS += disclaimtest$(EXEEXT)
+check_PROGRAMS += disclaimtest
+disclaimtest_SOURCES = tests/disclaim.c
+disclaimtest_LDADD = $(test_ldadd)
+if THREADS
+disclaimtest_LDADD += $(THREADDLLIBS)
+endif
+
+TESTS += disclaim_bench$(EXEEXT)
+check_PROGRAMS += disclaim_bench
+disclaim_bench_SOURCES = tests/disclaim_bench.c
+disclaim_bench_LDADD = $(test_ldadd)
+
+TESTS += weakmaptest$(EXEEXT)
+check_PROGRAMS += weakmaptest
+weakmaptest_SOURCES = tests/weakmap.c
+weakmaptest_LDADD = $(test_ldadd)
+if THREADS
+if ENABLE_SHARED
+weakmaptest_LDADD += $(ATOMIC_OPS_LIBS)
+endif
+weakmaptest_LDADD += $(THREADDLLIBS)
+endif
+
+endif
+
+# Run the tests directly (without test-driver):
+.PHONY: check-without-test-driver
+check-without-test-driver: $(TESTS)
+	./gctest$(EXEEXT)
+	./hugetest$(EXEEXT)
+	./leaktest$(EXEEXT)
+	./middletest$(EXEEXT)
+	./realloctest$(EXEEXT)
+	./smashtest$(EXEEXT)
+	./staticrootstest$(EXEEXT)
+	test ! -f atomicopstest$(EXEEXT) || ./atomicopstest$(EXEEXT)
+	test ! -f cpptest$(EXEEXT) || ./cpptest$(EXEEXT)
+	test ! -f disclaim_bench$(EXEEXT) || ./disclaim_bench$(EXEEXT)
+	test ! -f disclaimtest$(EXEEXT) || ./disclaimtest$(EXEEXT)
+	test ! -f initfromthreadtest$(EXEEXT) || ./initfromthreadtest$(EXEEXT)
+	test ! -f subthreadcreatetest$(EXEEXT) || ./subthreadcreatetest$(EXEEXT)
+	test ! -f threadkeytest$(EXEEXT) || ./threadkeytest$(EXEEXT)
+	test ! -f threadleaktest$(EXEEXT) || ./threadleaktest$(EXEEXT)
+	test ! -f tracetest$(EXEEXT) || ./tracetest$(EXEEXT)
+	test ! -f weakmaptest$(EXEEXT) || ./weakmaptest$(EXEEXT)
+	./cordtest$(EXEEXT)
