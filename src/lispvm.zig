@@ -1,20 +1,26 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 
+const BytecodeVersion = 1;
+
 pub const Opcode = enum(u8) {
     call_function = 0x0,
     call_intrinsic,
     gc_collect,
     /// Compare the top two values on the stack and update the compare state
     order,
-    /// Push an immediate value
+    /// Push an immediate (const) value
     push,
     /// Pop a value and discard it
     pop,
     /// The stack must contain a list of values to be added, which is replaced by the sum
     add,
-    /// Print the top value on the stack
+    /// Pop and print the N values on the stack in argument order
     print,
+    /// Defines a constant byte sequence by name
+    /// Example: const_bytes_set foo [bar\0abc]
+    //const_bytes_set,
+    //const_bytes_get,
     /// Exit the process with an exit code
     exit,
 };
@@ -36,8 +42,10 @@ pub const Op = union(Opcode) {
     },
     push: ast.ExprValue,
     pop: void,
-    add: void,
-    print: void,
+    // Pop N values from the stack, push the accumulated sum
+    add: u64,
+    // Pop N values from the stack, print them in argument order
+    print: u64,
     // Exit the process with an exit code
     exit: u8,
 };
@@ -50,25 +58,38 @@ pub const State = struct {
 
     /// Result of `order`: -1 if less than, 0 if equal, 1 if greater
     /// Used by je, jne, jg, jge, jl, jle
-    compare_result: i1,
+    /// This is a virtual register to reduce stack operations
+    compare_result: i2,
 };
 
 pub const VM = struct {
     state: State = undefined,
-    constants: std.ArrayList(ast.ExprValue),
+    const_pool: std.ArrayList(ast.ExprValue),
     stack: std.ArrayList(ast.ExprValue),
     ops: std.ArrayList(Op),
 
     pub fn init() VM {
         return .{
             .stack = std.ArrayList(ast.ExprValue).init(std.heap.page_allocator),
-            .constants = std.ArrayList(ast.ExprValue).init(std.heap.page_allocator),
+            .const_pool = std.ArrayList(ast.ExprValue).init(std.heap.page_allocator),
             .ops = std.ArrayList(Op).init(std.heap.page_allocator),
+            .state = .{ .pc = 0, .compare_result = 0 },
         };
     }
 
+    pub fn clearOps(self: *@This()) void {
+        self.ops.clearRetainingCapacity();
+        self.state.pc = 0;
+    }
+
+    // fn render(expr: *ast.Expr) ![]u8 {
+    //     const str = try expr.toStringAlloc();
+    //     defer mem.allocator.free(str);
+    //     return try std.mem.replaceOwned(u8, mem.allocator, str, "\\n", "\n");
+    // }
     pub fn run(self: *@This()) !void {
         for (self.ops.items) |op| {
+            defer self.state.pc += 1;
             switch (op) {
                 .call_function => {},
                 .call_intrinsic => {},
@@ -78,17 +99,21 @@ pub const VM = struct {
                     try self.stack.append(val);
                 },
                 .pop => {},
-                .add => {
-                    // TODO: stack should contain number of items to add - or... be a list of values
+                .add => |count| {
                     var sum: f64 = 0;
-                    while (self.stack.items.len > 0) {
+                    for (0..count) |_| {
                         const value = self.stack.pop();
                         sum += value.num;
                     }
+                    // while (self.stack.items.len > 0) {
+                    //     const value = self.stack.pop();
+                    //     sum += value.num;
+                    // }
                     try self.stack.append(.{ .num = sum });
                 },
                 .print => {
                     const value = self.stack.pop();
+                    // TODO: render(...) before printing (do what stdPrint does)
                     std.debug.print("\nOn stack: {}\n", .{value});
                 },
                 .exit => {
@@ -101,6 +126,7 @@ pub const VM = struct {
     /// Serialize the ops to a writer
     pub fn serialize(self: *@This(), alloc: std.mem.Allocator, writer: anytype) !void {
         _ = alloc;
+        try writer.writeIntLittle(u8, BytecodeVersion);
         for (self.ops.items) |op| {
             try writer.writeIntLittle(u8, @intFromEnum(op));
             switch (op) {
@@ -125,21 +151,13 @@ pub const VM = struct {
         }
     }
 
-    fn deserializeValue(reader: anytype) !ast.ExprValue {
-        const kind = try reader.readEnum(ast.ExprType, std.builtin.Endian.Little);
-        switch (kind) {
-            .num => {
-                const num = @as(f64, @bitCast(try reader.readIntLittle(u64)));
-                return .{ .num = num };
-            },
-            else => {
-                return error.InvalidValue;
-            },
-        }
-    }
-
     /// Deserialize the ops from a reader
     pub fn deserialize(_: *@This(), reader: anytype) !void {
+        const version = try reader.readIntLittle(u8);
+        if (version != BytecodeVersion) {
+            return error.InvalidBytecodeVersion;
+        }
+
         while (true) {
             const op = reader.readEnum(Opcode, std.builtin.Endian.Little) catch |err| switch (err) {
                 error.EndOfStream => break,
@@ -159,9 +177,22 @@ pub const VM = struct {
         }
     }
 
+    fn deserializeValue(reader: anytype) !ast.ExprValue {
+        const kind = try reader.readEnum(ast.ExprType, std.builtin.Endian.Little);
+        switch (kind) {
+            .num => {
+                const num = @as(f64, @bitCast(try reader.readIntLittle(u64)));
+                return .{ .num = num };
+            },
+            else => {
+                return error.InvalidValue;
+            },
+        }
+    }
+
     /// Assemble text into byte code
     pub fn assemble(self: *@This(), reader: anytype) void {
-        _ = .{self, reader};
+        _ = .{ self, reader };
     }
 
     pub fn disassemble(self: *@This(), writer: anytype) !void {
@@ -191,7 +222,7 @@ test "vm-1" {
     var vm = VM.init();
     try vm.ops.append(.{ .push = .{ .num = 1.0 } });
     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
-    try vm.ops.append(.{ .add = {} });
+    try vm.ops.append(.{ .add = 2 });
     try vm.ops.append(.{ .print = {} });
     //try vm.ops.append(.{ .exit = 0 });
     try vm.run();
@@ -201,7 +232,7 @@ test "serialize-1" {
     var vm = VM.init();
     try vm.ops.append(.{ .push = .{ .num = 1.0 } });
     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
-    try vm.ops.append(.{ .add = {} });
+    try vm.ops.append(.{ .add = 2 });
     try vm.ops.append(.{ .print = {} });
     try vm.ops.append(.{ .exit = 0 });
 

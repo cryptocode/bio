@@ -356,6 +356,7 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
             try std.io.getStdOut().writer().print(" ", .{});
         }
     }
+    try ev.vm.ops.append(.{ .print = args.len });
     return &expr_atom_nil;
 }
 
@@ -868,16 +869,15 @@ pub fn stdLogicalNot(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 }
 
 pub fn stdSum(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var sum: f64 = 0;
     for (args) |expr| {
         const arg = try ev.eval(env, expr);
         switch (arg.val) {
-            ExprType.num => |num| sum += num,
+            ExprType.num => try ev.vm.ops.append(.{ .push = arg.val }),
             else => return ExprErrors.ExpectedNumber,
         }
     }
-
-    return ast.makeNumExpr(sum);
+    try ev.vm.ops.append(.{ .add = args.len });
+    return ast.makeNumExpr(0); //ev.vm.stack.pop().num);
 }
 
 pub fn stdSub(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {

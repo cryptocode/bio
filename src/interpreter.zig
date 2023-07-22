@@ -3,6 +3,7 @@ const ast = @import("ast.zig");
 const intrinsics = @import("intrinsics.zig");
 const mem = @import("gc.zig");
 const linereader = @import("linereader.zig");
+const virtualmachine = @import("lispvm.zig");
 const SourceLocation = @import("sourcelocation.zig").SourceLocation;
 const Expr = ast.Expr;
 const ExprType = ast.ExprType;
@@ -12,6 +13,7 @@ const ExprErrors = ast.ExprErrors;
 
 /// The expression reader and evaluator
 pub const Interpreter = struct {
+    vm: virtualmachine.VM = undefined,
     env: *Env,
     exit_code: ?u8 = null,
     gensym_seq: u64 = 0,
@@ -26,6 +28,7 @@ pub const Interpreter = struct {
         SourceLocation.initStack();
 
         var instance = Interpreter{ .env = try ast.makeEnv(null, "global") };
+        instance.vm = virtualmachine.VM.init();
         try instance.env.put("import", &intrinsics.expr_std_import);
         try instance.env.put("exit", &intrinsics.expr_std_exit);
         try instance.env.put("gc", &intrinsics.expr_std_run_gc);

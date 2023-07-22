@@ -35,6 +35,8 @@ pub fn main() !void {
                 const load_expr = try std.fmt.allocPrint(gc.allocator, "(import \"{s}\")", .{process_args[2]});
                 defer gc.allocator.free(load_expr);
                 _ = try interpreter.eval(interpreter.env, try interpreter.parse(load_expr));
+
+                try interpreter.vm.run();
                 return;
             }
         }
