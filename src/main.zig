@@ -1,6 +1,6 @@
 const std = @import("std");
 const ast = @import("ast.zig");
-const gc = @import("gc.zig");
+const gc = @import("boehm.zig");
 const Interpreter = @import("interpreter.zig").Interpreter;
 const intrinsics = @import("intrinsics.zig");
 
@@ -9,17 +9,16 @@ pub fn main() !void {
     var interpreter = try Interpreter.init();
     defer interpreter.deinit();
 
+    var allocator = gc.allocator();
+
     // Load the standard library
     {
-        var args = std.ArrayList(*ast.Expr).init(gc.allocator);
+        var args = std.ArrayList(*ast.Expr).init(allocator);
         defer args.deinit();
 
         // Use current directory for standard library path
-        const cwd_absolute = try std.fs.cwd().realpathAlloc(gc.allocator, ".");
-        defer gc.allocator.free(cwd_absolute);
-
-        const stdpath = try std.fs.path.join(gc.allocator, &[_][]const u8{ cwd_absolute, "std.lisp" });
-        defer gc.allocator.free(stdpath);
+        const cwd_absolute = try std.fs.cwd().realpathAlloc(allocator, ".");
+        const stdpath = try std.fs.path.join(allocator, &[_][]const u8{ cwd_absolute, "std.lisp" });
 
         var stdlib = try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(stdpath) });
         try args.append(stdlib);
@@ -28,12 +27,10 @@ pub fn main() !void {
 
     // Check if "run <file>" was passed
     {
-        const process_args = try std.process.argsAlloc(gc.allocator);
-        defer std.process.argsFree(gc.allocator, process_args);
+        const process_args = try std.process.argsAlloc(allocator);
         if (process_args.len > 1) {
             if (std.mem.eql(u8, process_args[1], "run") and process_args.len > 2) {
-                const load_expr = try std.fmt.allocPrint(gc.allocator, "(import \"{s}\")", .{process_args[2]});
-                defer gc.allocator.free(load_expr);
+                const load_expr = try std.fmt.allocPrint(allocator, "(import \"{s}\")", .{process_args[2]});
                 _ = try interpreter.eval(interpreter.env, try interpreter.parse(load_expr));
 
                 try interpreter.vm.run();
@@ -54,9 +51,4 @@ test "Evaluate standard library and test.lisp" {
     defer interpreter.deinit();
     _ = try interpreter.eval(interpreter.env, try interpreter.parse("(begin (import \"std.lisp\") (import \"test.lisp\"))"));
     try std.testing.expectEqual(interpreter.exit_code, null);
-}
-
-// Leak detection during tests
-test "Finalize" {
-    _ = gc.gpa.deinit();
 }
