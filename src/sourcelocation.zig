@@ -1,5 +1,5 @@
 const std = @import("std");
-const mem = @import("gc.zig");
+const gc = @import("boehm.zig");
 
 /// Maintains current source locations, pushing and popping from a stack as
 /// files are being imported.
@@ -13,11 +13,12 @@ pub const SourceLocation = struct {
 
     /// Push a new sourec context. The file name is duplicated.
     pub fn push(file: []const u8) !void {
+        var allocator = gc.allocator();
         const loc = try stack.addOne();
         loc.line = 0;
         loc.col = 0;
         if (!files.contains(file)) {
-            loc.file = try mem.allocator.dupe(u8, file);
+            loc.file = try allocator.dupe(u8, file);
             try files.put(loc.file, {});
         } else {
             loc.file = files.getEntry(file).?.key_ptr.*;
@@ -29,18 +30,15 @@ pub const SourceLocation = struct {
     }
 
     pub fn initStack() void {
-        stack = std.ArrayList(SourceLocation).init(mem.allocator);
-        files = std.StringHashMap(void).init(mem.allocator);
+        var allocator = gc.allocator();
+        stack = std.ArrayList(SourceLocation).init(allocator);
+        files = std.StringHashMap(void).init(allocator);
         push("repl") catch unreachable;
     }
 
     pub fn deinitStack() void {
         while (stack.items.len > 0) {
             pop();
-        }
-        var it = files.iterator();
-        while (it.next()) |file| {
-            mem.allocator.free(file.key_ptr.*);
         }
         files.deinit();
         stack.deinit();

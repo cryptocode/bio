@@ -33,7 +33,8 @@ pub fn main() !void {
                 const load_expr = try std.fmt.allocPrint(allocator, "(import \"{s}\")", .{process_args[2]});
                 _ = try interpreter.eval(interpreter.env, try interpreter.parse(load_expr));
 
-                try interpreter.vm.run();
+                // TODO: reinstate
+                //try interpreter.vm.run();
                 return;
             }
         }

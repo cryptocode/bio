@@ -10,8 +10,12 @@ const gc = @cImport({
 
 pub fn allocator() Allocator {
     if (gc.GC_is_init_called() == 0) {
+        std.debug.print("INITING\n", .{});
         gc.GC_init();
+        //gc.GC_disable();
     }
+
+    //if (true) return std.heap.page_allocator;
 
     return Allocator{
         .ptr = undefined,
@@ -139,7 +143,6 @@ const gc_allocator_vtable = Allocator.VTable{
 
 test "GcAllocator" {
     const alloc = allocator();
-
     try std.heap.testAllocator(alloc);
     try std.heap.testAllocatorAligned(alloc);
     try std.heap.testAllocatorLargeAlignment(alloc);

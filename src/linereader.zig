@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const mem = @import("gc.zig");
 const target = @import("builtin").target;
+const gc = @import("boehm.zig");
 
 const is_windows = target.os.tag == .windows;
 const linenoise = @cImport({
@@ -38,8 +38,7 @@ const Linenoise = struct {
     /// Add the given entry to the REPL history
     pub fn addToHistory(_: *Linenoise, entry: []const u8) !void {
         if (!is_windows and entry.len > 0) {
-            const duped = try mem.allocator.dupeZ(u8, entry);
-            defer mem.allocator.free(duped);
+            const duped = try gc.allocator().dupeZ(u8, entry);
             // Linenoise takes a copy
             _ = linenoise.linenoiseHistoryAdd(duped.ptr);
         }
@@ -77,7 +76,7 @@ const Linenoise = struct {
 
             if (self.remaining == 0) {
                 self.eof_next = true;
-                std.heap.c_allocator.free(self.line.?);
+                //std.heap.c_allocator.free(self.line.?);
             }
             return copy_count;
         } else {
