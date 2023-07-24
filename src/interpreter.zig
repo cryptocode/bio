@@ -22,14 +22,18 @@ pub const Interpreter = struct {
     break_seen: bool = false,
     allocator: std.mem.Allocator,
     registered_envs: std.ArrayList(*Env) = undefined,
-    //registered_expr: std.ArrayList(*Expr) = undefined,
+    registered_expr: std.ArrayList(*Expr) = undefined,
 
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
-    pub fn init() !Interpreter {
+    pub fn init() !*Interpreter {
         SourceLocation.initStack();
 
-        var instance = Interpreter{ .env = try ast.makeEnv(null, "global"), .allocator = gc.allocator(), .registered_envs = std.ArrayList(*Env).init(gc.allocator()), };
+        var allocator = gc.allocator();
+        var instance = try allocator.create(Interpreter);
+        instance.* = Interpreter{ .env = try ast.makeEnv(null, "global"), .allocator = gc.allocator(), 
+            .registered_envs = std.ArrayList(*Env).init(allocator), 
+            .registered_expr = std.ArrayList(*Expr).init(allocator)};
         instance.vm = virtualmachine.VM.init();
         // TODO: ???
         try instance.registered_envs.append(instance.env);
@@ -129,7 +133,6 @@ pub const Interpreter = struct {
         return instance;
     }
 
-    /// Perform a full GC sweep and check for leaks
     pub fn deinit(_: *Interpreter) void {
         //gc.collect(.aggressive);
         SourceLocation.deinitStack();

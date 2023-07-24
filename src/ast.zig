@@ -59,7 +59,8 @@ pub const Expr = struct {
 
     /// Create a new expression with an undefined value
     /// TODO: remove argument (no longer used)
-    pub fn create(_: bool) !*@This() {
+    pub fn create(register_with_gc: bool) !*@This() {
+        _ = register_with_gc;
         var allocator = gc.allocator();
         var self = try allocator.create(Expr);
         self.* = Expr{ .val = undefined };

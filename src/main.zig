@@ -22,7 +22,7 @@ pub fn main() !void {
 
         var stdlib = try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(stdpath) });
         try args.append(stdlib);
-        _ = try intrinsics.stdImport(&interpreter, interpreter.env, args.items);
+        _ = try intrinsics.stdImport(interpreter, interpreter.env, args.items);
     }
 
     // Check if "run <file>" was passed

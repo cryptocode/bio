@@ -288,7 +288,7 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
 pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env, args };
-    //_ = gc.collect(.short);
+    _ = gc.collect(.short);
     return &expr_atom_nil;
 }
 
