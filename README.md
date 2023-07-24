@@ -4,7 +4,7 @@ Bio is an experimental Lisp dialect similar to Scheme, with an interpreter writt
 
 Features include macros, garbage collection, error handling, an object/module facility, and a standard library.
 
-A description of the project is available at [dev.to](https://dev.to/stein/bio-all-your-parentheses-are-belong-to-us-25lo)
+A description of the project is available [in this blog post](https://cryptocode.github.io/blog/docs/bio-introduction/)
 
 ```scheme
 (filter
