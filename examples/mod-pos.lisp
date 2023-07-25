@@ -12,12 +12,26 @@
 ;    Bejing       : 39.9390731° N  116.1172802° E
 ;    Buenos Aires : 34.5777632° S  58.409201° W
 ;    Sidney       : 33.8568285° S  151.2130914° E
+;    Sidney zeroed: 0° N  0° E
+;
+; Making a new point can be done with:
+; (var pt (Point (new-point 2 5.4)))
+;
+; To access a member:
+; (pt y)
+; 5.4
+;
+; Two ways to call member functions:
+; ((pt as-string))
+; 2 5.4
+; (pt (as-string))
+; 2 5.4
 
 ((lambda ()
 
     ; Both point types adopt this as their "update" function, but each
     ; point type have their own implementation of the "as-string" function.
-    ; This is macro so x and y is available in the parent environment.
+    ; This is a macro, so x and y is available in the environment.
     (var generic-update (macro (new-x new-y)
         (set! x new-x)
         (set! y new-y)
@@ -61,9 +75,8 @@
         (print "Buenos Aires :" ((buenos-aires as-string)) "\n")
         (print "Sidney       :" ((sidney as-string)) "\n")
 
-
         (sidney (update 0 0))
-        (print "Signey zeroed:" ((sidney as-string)) "\n")
+        (print "Sidney zeroed:" ((sidney as-string)) "\n")
     ))
 
     (var module-name "Position Module")
