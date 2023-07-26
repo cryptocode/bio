@@ -43,7 +43,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.linkLibrary(gc);
 
     if (!target.isWindows()) {
-        exe.addCSourceFile("deps/linenoise.c", &[_][]const u8{"-std=c99"});
+        exe.addCSourceFile("deps/linenoise.c", &[_][]const u8{"-std=c99", "-Wno-everything"});
         exe.addIncludePath("deps");
     }
 
