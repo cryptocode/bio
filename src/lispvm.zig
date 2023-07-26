@@ -99,10 +99,13 @@ pub const VM = struct {
                     try self.stack.append(val);
                 },
                 .pop => {},
-                .add => |count| {
+                .add => |arg_count| {
                     var sum: f64 = 0;
-                    for (0..count) |_| {
+                    for (0..arg_count) |_| {
                         const value = self.stack.pop();
+                        if (value == .sym) {
+                            std.debug.print("WTF got sym {s}\n", .{value.sym});
+                        }
                         sum += value.num;
                     }
                     // while (self.stack.items.len > 0) {
@@ -111,10 +114,20 @@ pub const VM = struct {
                     // }
                     try self.stack.append(.{ .num = sum });
                 },
-                .print => {
-                    const value = self.stack.pop();
+                .print => |arg_count| {
+
+                    std.debug.print("Arg count: {d}\n", .{arg_count});
+
+                    // Print the top arg_count values on the stack, in argument order
+                    self.stack.items = self.stack.items[self.stack.items.len - arg_count..];
+                    for (self.stack.items) |value| {
+                        // TODO: render(...) before printing (do what stdPrint does)
+                        std.debug.print("{d}\n", .{value.num});
+                    }
+
+                    //const value = self.stack.resize(self.stack.items.len - arg_count);
                     // TODO: render(...) before printing (do what stdPrint does)
-                    std.debug.print("\nOn stack: {}\n", .{value});
+                    //std.debug.print("\nOn stack: {d}\n", .{value});
                 },
                 .exit => {
                     std.os.exit(op.exit);
@@ -132,6 +145,9 @@ pub const VM = struct {
             switch (op) {
                 .push => |val| {
                     try serializeValue(val, writer);
+                },
+                .print => |arg_count| {
+                    try writer.writeIntLittle(u64, arg_count);
                 },
                 .exit => {
                     try writer.writeByte(op.exit);
@@ -167,6 +183,10 @@ pub const VM = struct {
                 .push => {
                     const val = try deserializeValue(reader);
                     _ = val;
+                },
+                .print => {
+                    const count = try reader.readIntLittle(u64);
+                    _ = count;
                 },
                 .exit => {
                     const exit = try reader.readByte();
@@ -208,6 +228,9 @@ pub const VM = struct {
                         else => {},
                     }
                 },
+                .print => |arg_count| {
+                    try writer.print("{}", .{arg_count});
+                },
                 .exit => {
                     try writer.print("{}", .{op.exit});
                 },
@@ -223,7 +246,7 @@ test "vm-1" {
     try vm.ops.append(.{ .push = .{ .num = 1.0 } });
     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
     try vm.ops.append(.{ .add = 2 });
-    try vm.ops.append(.{ .print = {} });
+    try vm.ops.append(.{ .print = 1 });
     //try vm.ops.append(.{ .exit = 0 });
     try vm.run();
 }
@@ -233,7 +256,7 @@ test "serialize-1" {
     try vm.ops.append(.{ .push = .{ .num = 1.0 } });
     try vm.ops.append(.{ .push = .{ .num = 2.0 } });
     try vm.ops.append(.{ .add = 2 });
-    try vm.ops.append(.{ .print = {} });
+    try vm.ops.append(.{ .print = 1 });
     try vm.ops.append(.{ .exit = 0 });
 
     var bytes = std.ArrayList(u8).init(std.testing.allocator);

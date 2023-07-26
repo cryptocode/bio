@@ -863,14 +863,16 @@ pub fn stdLogicalNot(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 pub fn stdSum(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var sum: f64 = 0;
     for (args) |expr| {
-        const arg = try ev.eval(env, expr);
-        switch (arg.val) {
-            ExprType.num => |num| {
-                sum += num;
-                try ev.vm.ops.append(.{ .push = arg.val });
-            },
-            else => return ExprErrors.ExpectedNumber,
-        }
+        
+        _ = try ev.codegen(env, expr);
+        //const arg = try ev.eval(env, expr);
+        //switch (arg.val) {
+        //    ExprType.num => |num| {
+        //        sum += num;
+        //        try ev.vm.ops.append(.{ .push = arg.val });
+        //    },
+        //    else => return ExprErrors.ExpectedNumber,
+        //}
     }
     try ev.vm.ops.append(.{ .add = args.len });
 

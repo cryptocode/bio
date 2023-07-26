@@ -4,15 +4,13 @@ pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // libgc
+    // Boehm GC
     const gc = b.addStaticLibrary(.{
         .name = "gc",
         .target = target,
         .optimize = optimize,
     });
     {
-        // TODO(mitchellh): support more complex features that are usually on
-        // with libgc like threading, parallelization, etc.
         const cflags = [_][]const u8{};
         const libgc_srcs = [_][]const u8{
             "alloc.c",    "reclaim.c", "allchblk.c", "misc.c",     "mach_dep.c", "os_dep.c",

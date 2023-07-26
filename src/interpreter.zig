@@ -22,7 +22,6 @@ pub const Interpreter = struct {
     break_seen: bool = false,
     allocator: std.mem.Allocator,
     registered_envs: std.ArrayList(*Env) = undefined,
-    registered_expr: std.ArrayList(*Expr) = undefined,
 
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
@@ -32,8 +31,8 @@ pub const Interpreter = struct {
         var allocator = gc.allocator();
         var instance = try allocator.create(Interpreter);
         instance.* = Interpreter{ .env = try ast.makeEnv(null, "global"), .allocator = gc.allocator(), 
-            .registered_envs = std.ArrayList(*Env).init(allocator), 
-            .registered_expr = std.ArrayList(*Expr).init(allocator)};
+            .registered_envs = std.ArrayList(*Env).init(allocator),
+        };
         instance.vm = virtualmachine.VM.init();
         // TODO: ???
         try instance.registered_envs.append(instance.env);
@@ -165,26 +164,251 @@ pub const Interpreter = struct {
         self.has_errors = true;
     }
 
-    /// Run GC if needed, then parse and evaluate the expression
-    pub fn parseAndEvalExpression(self: *Interpreter, line: []const u8) anyerror!?*Expr {
-        var input = std.mem.trimRight(u8, line, "\r\n");
+    /// Generate VM code for an expression
+    pub fn codegen(self: *Interpreter, environment: *Env, expr: *Expr) anyerror!*Expr {
+        var maybe_next: ?*Expr = expr;
+        var env: *Env = environment;
+        var seen_macro_expand = false;
+        self.has_errors = false;
 
-        // Ignore empty lines and comments
-        if (input.len == 0 or input[0] == ';') {
-            return null;
+        tailcall_optimization_loop: while (maybe_next) |e| {
+            if (self.exit_code) |_| {
+                return &intrinsics.expr_atom_nil;
+            }
+            if (e == &intrinsics.expr_atom_break) {
+                self.break_seen = true;
+                return &intrinsics.expr_atom_nil;
+            }
+            switch (e.val) {
+                ExprValue.num, ExprValue.env, ExprValue.any => {
+                    try self.vm.ops.append(.{ .push = e.val });
+                    return e;
+                },
+                ExprValue.sym => |sym| {
+                    if (env.lookup(sym, true)) |val| {
+                        // NOTE: this might for instance be '+' for a function call
+                        // Just return? what happens on (+ 2 a b) ?
+                        //try self.vm.ops.append(.{ .push = e.val });
+                        return val;
+                    } else {
+                        try self.printErrorFmt(&e.src, "{s} is not defined\n", .{sym});
+                        return &intrinsics.expr_atom_nil;
+                    }
+                },
+                ExprValue.lst => |list| {
+                    if (list.items.len == 0) {
+                        return &intrinsics.expr_atom_nil;
+                    }
+
+                    const args_slice = list.items[1..];
+                    if (list.items[0] == &intrinsics.expr_atom_macroexpand) {
+                        // Signal that we don't want to evaluate the expression returned by the macro
+                        seen_macro_expand = true;
+                        maybe_next = args_slice[args_slice.len - 1];
+                        continue;
+                    } else if (list.items[0] == &intrinsics.expr_atom_begin) {
+                        var res: *Expr = &intrinsics.expr_atom_nil;
+                        for (args_slice[0 .. args_slice.len - 1]) |arg| {
+                            res = try self.codegen(env, arg);
+                        }
+                        maybe_next = args_slice[args_slice.len - 1];
+                        continue;
+                    } else if (list.items[0] == &intrinsics.expr_atom_cond) {
+                        try intrinsics.requireMinimumArgCount(2, args_slice);
+
+                        const else_branch = args_slice[args_slice.len - 1];
+                        if (else_branch.val != ExprType.lst or else_branch.val.lst.items.len != 1) {
+                            try self.printErrorFmt(&e.src, "Last expression in cond must be a single-expression list\n", .{});
+                            return ExprErrors.AlreadyReported;
+                        }
+
+                        for (args_slice) |branch| {
+                            if (branch == else_branch) {
+                                maybe_next = branch.val.lst.items[0];
+                                continue :tailcall_optimization_loop;
+                            } else if (branch.val == ExprType.lst) {
+                                try intrinsics.requireExactArgCount(2, branch.val.lst.items);
+
+                                const predicate = try self.codegen(env, branch.val.lst.items[0]);
+                                if (predicate == &intrinsics.expr_atom_true) {
+                                    maybe_next = branch.val.lst.items[1];
+                                    continue :tailcall_optimization_loop;
+                                }
+                            } else {
+                                try self.printErrorFmt(&e.src, "Invalid switch syntax\n", .{});
+                                return ExprErrors.AlreadyReported;
+                            }
+                        }
+                        return &intrinsics.expr_atom_nil;
+                    } else if (list.items[0] == &intrinsics.expr_atom_if) {
+                        try intrinsics.requireMinimumArgCount(2, args_slice);
+
+                        var branch: usize = 1;
+                        const predicate = try self.codegen(env, args_slice[0]);
+                        if (predicate != &intrinsics.expr_atom_true) {
+                            // Anything not defined as falsy is considered true in a boolean context
+                            if (intrinsics.isFalsy(predicate)) {
+                                branch += 1;
+                            }
+                        }
+
+                        if (branch < args_slice.len) {
+                            maybe_next = args_slice[branch];
+                            continue :tailcall_optimization_loop;
+                        } else {
+                            return &intrinsics.expr_atom_nil;
+                        }
+                    }
+
+                    // Look up std function or lambda. If not found, the lookup has already reported the error.
+                    var func = try self.codegen(env, list.items[0]);
+                    if (func == &intrinsics.expr_atom_nil) {
+                        return &intrinsics.expr_atom_nil;
+                    }
+
+                    const kind = func.val;
+                    switch (kind) {
+                        ExprValue.env => |target_env| {
+                            if (args_slice.len == 0 or (args_slice[0].val != ExprType.sym and args_slice[0].val != ExprType.lst)) {
+                                try self.printErrorFmt(&e.src, "Missing symbol or call in environment lookup: ", .{});
+                                if (args_slice.len > 0) {
+                                    try args_slice[0].print();
+                                } else {
+                                    try self.printErrorFmt(&e.src, "[no argument]\n", .{});
+                                }
+                                return ExprErrors.AlreadyReported;
+                            }
+
+                            if (args_slice[0].val == ExprType.lst) {
+                                maybe_next = args_slice[0];
+                                env = target_env;
+                                continue :tailcall_optimization_loop;
+                            } else if (target_env.lookup(args_slice[0].val.sym, false)) |match| {
+                                return match;
+                            } else {
+                                try self.printErrorFmt(&e.src, "Symbol not found in given environment: {s}\n", .{args_slice[0].val.sym});
+                                return ExprErrors.AlreadyReported;
+                            }
+                        },
+
+                        // Evaluate an intrinsic function
+                        ExprValue.fun => |fun| {
+                            return fun(self, env, args_slice) catch |err| {
+                                try self.printErrorFmt(&e.src, "", .{});
+                                try self.printError(err);
+                                return &intrinsics.expr_atom_nil;
+                            };
+                        },
+
+                        // Evaluate a previously defined lambda or macro
+                        ExprValue.lam, ExprValue.mac => |fun| {
+                            try intrinsics.requireType(self, fun.items[0], ExprType.lst);
+                            const parent_env = if (kind == ExprType.lam) func.env else env;
+                            const kind_str = if (kind == ExprType.lam) "lambda" else "macro";
+
+                            var local_env = try ast.makeEnv(parent_env, kind_str);
+                            // TODO: ???
+                            try self.registered_envs.append(local_env);
+                            var formal_param_count = fun.items[0].val.lst.items.len;
+                            var logical_arg_count = args_slice.len;
+
+                            // Bind arguments to the new environment
+                            for (fun.items[0].val.lst.items, 0..) |param, index| {
+                                if (param.val == ExprType.sym) {
+                                    if (param == &intrinsics.expr_atom_rest) {
+                                        formal_param_count -= 1;
+                                        var rest_args = try ast.makeListExpr(null);
+                                        for (args_slice[index..]) |rest_param| {
+                                            logical_arg_count -= 1;
+                                            if (kind == ExprType.lam) {
+                                                try rest_args.val.lst.append(try self.codegen(env, rest_param));
+                                            } else {
+                                                try rest_args.val.lst.append(rest_param);
+                                            }
+                                        }
+
+                                        logical_arg_count += 1;
+                                        try local_env.putWithSymbol(fun.items[0].val.lst.items[index + 1], rest_args);
+                                        break;
+                                    }
+
+                                    // Arguments are eagerly evaluated for lambdas, lazily for macros
+                                    if (index < args_slice.len) {
+                                        if (kind == ExprType.lam) {
+                                            try local_env.putWithSymbol(param, try self.codegen(env, args_slice[index]));
+                                        } else {
+                                            try local_env.putWithSymbol(param, args_slice[index]);
+                                        }
+                                    }
+                                } else {
+                                    try self.printErrorFmt(&e.src, "Formal parameter to {s} is not a symbol: ", .{kind_str});
+                                    try param.print();
+                                }
+                            }
+
+                            if (logical_arg_count != formal_param_count) {
+                                try self.printErrorFmt(&e.src, "{s} received {d} arguments, expected {d}\n", .{ kind_str, args_slice.len, formal_param_count });
+                                return &intrinsics.expr_atom_nil;
+                            }
+
+                            // Evaluate body, except the last expression which is TCO'ed
+                            var result: *Expr = undefined;
+                            for (fun.items[1 .. fun.items.len - 1]) |body_expr| {
+                                result = self.codegen(local_env, body_expr) catch |err| {
+                                    try self.printErrorFmt(&body_expr.src, "Could not evaluate {s} body:", .{kind_str});
+                                    try self.printError(err);
+                                    return &intrinsics.expr_atom_nil;
+                                };
+                                if (self.has_errors) {
+                                    std.debug.print("--- There are errors\n", .{});
+                                    return &intrinsics.expr_atom_nil;
+                                }
+                            }
+
+                            // For lambdas, we set up the next iteration to eval the last expression, while for
+                            // macros we just evaluate it on the assumption it's a quoted expression, which is
+                            // then evaluated in the next TCO iteration.
+                            const last_expr = fun.items[fun.items.len - 1];
+                            if (kind == ExprValue.lam) {
+                                env = local_env;
+                                maybe_next = last_expr;
+                                continue;
+                            } else {
+                                result = self.codegen(local_env, last_expr) catch |err| {
+                                    try self.printErrorFmt(&last_expr.src, "Could not evaluate {s} body:", .{kind_str});
+                                    try self.printError(err);
+                                    return &intrinsics.expr_atom_nil;
+                                };
+
+                                if (seen_macro_expand) {
+                                    return result;
+                                }
+
+                                env = local_env;
+                                maybe_next = result;
+                                continue;
+                            }
+                        },
+                        else => {
+                            try self.printErrorFmt(&e.src, "Not a function or macro: ", .{});
+                            try list.items[0].print();
+                            return &intrinsics.expr_atom_nil;
+                        },
+                    }
+                    return &intrinsics.expr_atom_nil;
+                },
+                // This allows us to create intrinsics that pass intrinsics as arguments
+                ExprValue.fun => {
+                    return e;
+                },
+                else => {
+                    try self.printErrorFmt(&e.src, "Invalid expression: {}\n", .{e});
+                    return &intrinsics.expr_atom_nil;
+                },
+            }
         }
-        var expr = try self.parse(input);
-        return try self.eval(self.env, expr);
-    }
-
-    /// Parse Bio source code into Expr objects
-    pub fn parse(self: *Interpreter, input: []const u8) !*Expr {
-        var it = Lisperator{
-            .index = 0,
-            .buffer = input,
-        };
-        return self.read(&it);
-    }
+        return &intrinsics.expr_atom_nil;
+    }    
 
     /// Evaluate an expression
     pub fn eval(self: *Interpreter, environment: *Env, expr: *Expr) anyerror!*Expr {
@@ -428,8 +652,29 @@ pub const Interpreter = struct {
         return &intrinsics.expr_atom_nil;
     }
 
-    /// Recursively read expressions
-    pub fn read(self: *Interpreter, it: *Lisperator) anyerror!*Expr {
+    /// Run GC if needed, then parse and evaluate the expression
+    pub fn parseAndEvalExpression(self: *Interpreter, line: []const u8) anyerror!?*Expr {
+        var input = std.mem.trimRight(u8, line, "\r\n");
+
+        // Ignore empty lines and comments
+        if (input.len == 0 or input[0] == ';') {
+            return null;
+        }
+        var expr = try self.parse(input);
+        return try self.eval(self.env, expr);
+    }
+
+    /// Parse Bio source code into Expr objects
+    pub fn parse(self: *Interpreter, input: []const u8) !*Expr {
+        var it = Lisperator{
+            .index = 0,
+            .buffer = input,
+        };
+        return self.parseRecursively(&it);
+    }
+
+    /// Recursively parse expressions
+    fn parseRecursively(self: *Interpreter, it: *Lisperator) anyerror!*Expr {
         if (it.next()) |val| {
             if (val.len > 0) {
                 switch (val[0]) {
@@ -441,7 +686,7 @@ pub const Interpreter = struct {
                                 return ExprErrors.SyntaxError;
                             }
                             if (peek[0] != ')') {
-                                try list.val.lst.append(try self.read(it));
+                                try list.val.lst.append(try self.parseRecursively(it));
                             } else {
                                 break;
                             }
@@ -467,13 +712,13 @@ pub const Interpreter = struct {
                             it.index = it.prev_index + index_adjust;
                         }
 
-                        return try ast.makeListExpr(&.{ unquote_op, try self.read(it) });
+                        return try ast.makeListExpr(&.{ unquote_op, try self.parseRecursively(it) });
                     },
                     '\'' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try self.read(it) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try self.parseRecursively(it) });
                     },
                     '`' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quasi_quote, try self.read(it) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quasi_quote, try self.parseRecursively(it) });
                     },
                     '"' => {
                         return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(val[1..val.len]) });
@@ -490,9 +735,10 @@ pub const Interpreter = struct {
         }
     }
 
-    /// This function helps us read a Bio expression that may span multiple lines
+    /// This function helps us parse a Bio expression that may span multiple lines
     /// If too many )'s are detected, an error is returned. We make sure to not
     /// count parenthesis inside string literals.
+    /// This is used by the REPL, and during file import parsing.
     pub fn readBalancedExpr(self: *Interpreter, reader: anytype, prompt: []const u8) anyerror!?[]u8 {
         var balance: isize = 0;
         var expr = std.ArrayList(u8).init(gc.allocator());

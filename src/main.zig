@@ -31,10 +31,10 @@ pub fn main() !void {
         if (process_args.len > 1) {
             if (std.mem.eql(u8, process_args[1], "run") and process_args.len > 2) {
                 const load_expr = try std.fmt.allocPrint(allocator, "(import \"{s}\")", .{process_args[2]});
-                _ = try interpreter.eval(interpreter.env, try interpreter.parse(load_expr));
+                _ = try interpreter.codegen(interpreter.env, try interpreter.parse(load_expr));
 
-                // TODO: reinstate
-                //try interpreter.vm.run();
+                try interpreter.vm.run();
+                try interpreter.vm.disassemble(std.io.getStdOut().writer());
                 return;
             }
         }

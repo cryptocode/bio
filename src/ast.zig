@@ -15,7 +15,7 @@ pub const ExprType = enum(u8) { sym, num, lst, map, lam, mac, fun, env, err, any
 pub const ExprValue = union(ExprType) {
     sym: []const u8,
     num: f64,
-    // TODO: turn containers into pointers to make ExprValue smaller
+    // TODO: turn containers into pointers to make ExprValue smaller, and to avoid copies
     lst: std.ArrayList(*Expr),
     map: std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true),
     lam: std.ArrayList(*Expr),

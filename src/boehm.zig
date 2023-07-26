@@ -8,6 +8,7 @@ const gc = @cImport({
     @cInclude("gc.h");
 });
 
+/// Returns the Zig allocator interface to BoehmGC
 pub fn allocator() Allocator {
     if (gc.GC_is_init_called() == 0) {
         // Make sure interior pointers are handled. It's recommended to call this before GC_init.
@@ -21,6 +22,7 @@ pub fn allocator() Allocator {
     };
 }
 
+/// Kind of garbage collection to run
 pub const GCKind = enum {
     nul,
     /// Short collection burst (typically a page worth of allocations)
@@ -30,10 +32,6 @@ pub const GCKind = enum {
     /// This is a full collection, only use when system is running low on memory
     aggressive,
 };
-
-pub fn setMaxHeap(max_size: usize) void {
-    gc.GC_set_max_heap_size(max_size);    
-}
 
 /// Run garbage collector where `kind` is the type of collection to run; normally you want .short or .normal.
 /// Returns true if collection is completed. It's possible to call this in a loop until it returns true (only useful for .short)
@@ -46,6 +44,10 @@ pub fn collect(kind: GCKind) bool {
     }
 
     return true;
+}
+
+pub fn setMaxHeap(max_size: usize) void {
+    gc.GC_set_max_heap_size(max_size);    
 }
 
 pub fn memUsage() usize {
@@ -76,18 +78,9 @@ pub fn setLeakDetection(enabled: bool) void {
 pub const BoehmGcAllocator = struct {
     fn alloc(_: *anyopaque, len: usize, log2_align: u8, return_address: usize) ?[*]u8 {
         _ = return_address;
-
-        //_ = collect(.normal);
-
         assert(len > 0);
         const alignment = @as(usize, 1) << @as(Allocator.Log2Align, @intCast(log2_align));
-        //std.debug.print("Len: {}, Alignedment: {}\n", .{len, alignment});
         var raw = gc.GC_memalign(alignment, len);
-        // TODO: remove
-        //if (raw == null) {
-        //    std.debug.print("memalign returned null\n", .{});
-        //    return null;
-        //}
         return @as([*]u8, @ptrCast(raw));
     }
 
