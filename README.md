@@ -107,7 +107,7 @@ Clone the repository and cd to the root directory.
 
 You'll need a recent [master build of Zig](https://ziglang.org/download/)
 
-Last tested with Zig version `0.11.0-dev.3910+689f3163a`
+Last tested with Zig version `0.11.0-dev.4003+c6aa29b6f`
 
 **Build**
 
@@ -118,13 +118,13 @@ zig build
 **Run the REPL:**
 
 ```bash
-./bio
+zig-out/bin/bio
 ```
 
 **Run a Bio source file:**
 
 ```bash
-./bio run examples/triangles.lisp
+zig-out/bin run examples/triangles.lisp
 ```
 
 You can also use `import` to evaluate files from the REPL, e.g. `(import "examples/albums.lisp")`
