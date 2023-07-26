@@ -230,11 +230,16 @@ These all return #t
 
 'var' creates a variable binding in the *current* environment. The binding will fail if it already exists in the current environment. The `define` function is just an alias to `var`
 
+Variable names can be any utf8 sequence that doesn't start with a number, " and '. Variable names are case-sensitive.
+
 ```scheme
 (var x 5)
 (define y 5)
 (var name (io.read-line))
 (var double (lambda (val) (* 2 val)))
+(var 😀 "Smiley")
+(print 😀)
+"Smiley"
 ```
 
 Local variables:

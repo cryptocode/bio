@@ -1,7 +1,7 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const intrinsics = @import("intrinsics.zig");
-const mem = @import("gc.zig");
+const gc = @import("boehm.zig");
 const linereader = @import("linereader.zig");
 const SourceLocation = @import("sourcelocation.zig").SourceLocation;
 const Expr = ast.Expr;
@@ -18,14 +18,21 @@ pub const Interpreter = struct {
     verbose: bool = false,
     has_errors: bool = false,
     break_seen: bool = false,
+    allocator: std.mem.Allocator,
+    registered_envs: std.ArrayList(*Env) = undefined,
 
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
-    pub fn init() !Interpreter {
-        mem.gc = try mem.GC.init();
+    pub fn init() !*Interpreter {
         SourceLocation.initStack();
 
-        var instance = Interpreter{ .env = try ast.makeEnv(null, "global") };
+        var allocator = gc.allocator();
+        var instance = try allocator.create(Interpreter);
+        instance.* = Interpreter{ .env = try ast.makeEnv(null, "global"), .allocator = gc.allocator(), 
+            .registered_envs = std.ArrayList(*Env).init(allocator),
+        };
+        try instance.registered_envs.append(instance.env);
+
         try instance.env.put("import", &intrinsics.expr_std_import);
         try instance.env.put("exit", &intrinsics.expr_std_exit);
         try instance.env.put("gc", &intrinsics.expr_std_run_gc);
@@ -121,13 +128,9 @@ pub const Interpreter = struct {
         return instance;
     }
 
-    /// Perform a full GC sweep and check for leaks
     pub fn deinit(_: *Interpreter) void {
-        mem.gc.deinit();
+        //gc.collect(.aggressive);
         SourceLocation.deinitStack();
-        if (!@import("builtin").is_test and mem.gpa.deinit() == .leak) {
-            std.io.getStdOut().writer().print("Memory leaks detected\n", .{}) catch unreachable;
-        }
     }
 
     /// Print user friendly errors
@@ -155,28 +158,6 @@ pub const Interpreter = struct {
         //     try std.io.getStdOut().writer().print("    {s}:{d}", .{loc.file, std.math.max(1, loc.line)});
         // }
         self.has_errors = true;
-    }
-
-    /// Run GC if needed, then parse and evaluate the expression
-    pub fn parseAndEvalExpression(self: *Interpreter, line: []const u8) anyerror!?*Expr {
-        mem.gc.runIfNeeded() catch {};
-        var input = std.mem.trimRight(u8, line, "\r\n");
-
-        // Ignore empty lines and comments
-        if (input.len == 0 or input[0] == ';') {
-            return null;
-        }
-        var expr = try self.parse(input);
-        return try self.eval(self.env, expr);
-    }
-
-    /// Parse Bio source code into Expr objects
-    pub fn parse(self: *Interpreter, input: []const u8) !*Expr {
-        var it = Lisperator{
-            .index = 0,
-            .buffer = input,
-        };
-        return self.read(&it);
     }
 
     /// Evaluate an expression
@@ -318,6 +299,7 @@ pub const Interpreter = struct {
                             const kind_str = if (kind == ExprType.lam) "lambda" else "macro";
 
                             var local_env = try ast.makeEnv(parent_env, kind_str);
+                            try self.registered_envs.append(local_env);
                             var formal_param_count = fun.items[0].val.lst.items.len;
                             var logical_arg_count = args_slice.len;
 
@@ -419,8 +401,29 @@ pub const Interpreter = struct {
         return &intrinsics.expr_atom_nil;
     }
 
-    /// Recursively read expressions
-    pub fn read(self: *Interpreter, it: *Lisperator) anyerror!*Expr {
+    /// Run GC if needed, then parse and evaluate the expression
+    pub fn parseAndEvalExpression(self: *Interpreter, line: []const u8) anyerror!?*Expr {
+        var input = std.mem.trimRight(u8, line, "\r\n");
+
+        // Ignore empty lines and comments
+        if (input.len == 0 or input[0] == ';') {
+            return null;
+        }
+        var expr = try self.parse(input);
+        return try self.eval(self.env, expr);
+    }
+
+    /// Parse Bio source code into Expr objects
+    pub fn parse(self: *Interpreter, input: []const u8) !*Expr {
+        var it = Lisperator{
+            .index = 0,
+            .buffer = input,
+        };
+        return self.parseRecursively(&it);
+    }
+
+    /// Recursively parse expressions
+    fn parseRecursively(self: *Interpreter, it: *Lisperator) anyerror!*Expr {
         if (it.next()) |val| {
             if (val.len > 0) {
                 switch (val[0]) {
@@ -432,7 +435,7 @@ pub const Interpreter = struct {
                                 return ExprErrors.SyntaxError;
                             }
                             if (peek[0] != ')') {
-                                try list.val.lst.append(try self.read(it));
+                                try list.val.lst.append(try self.parseRecursively(it));
                             } else {
                                 break;
                             }
@@ -458,13 +461,13 @@ pub const Interpreter = struct {
                             it.index = it.prev_index + index_adjust;
                         }
 
-                        return try ast.makeListExpr(&.{ unquote_op, try self.read(it) });
+                        return try ast.makeListExpr(&.{ unquote_op, try self.parseRecursively(it) });
                     },
                     '\'' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try self.read(it) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try self.parseRecursively(it) });
                     },
                     '`' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quasi_quote, try self.read(it) });
+                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quasi_quote, try self.parseRecursively(it) });
                     },
                     '"' => {
                         return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(val[1..val.len]) });
@@ -481,25 +484,26 @@ pub const Interpreter = struct {
         }
     }
 
-    /// This function helps us read a Bio expression that may span multiple lines
+    /// This function helps us parse a Bio expression that may span multiple lines
     /// If too many )'s are detected, an error is returned. We make sure to not
     /// count parenthesis inside string literals.
+    /// This is used by the REPL, and during file import parsing.
     pub fn readBalancedExpr(self: *Interpreter, reader: anytype, prompt: []const u8) anyerror!?[]u8 {
         var balance: isize = 0;
-        var expr = std.ArrayList(u8).init(mem.allocator);
+        var expr = std.ArrayList(u8).init(gc.allocator());
         defer expr.deinit();
         var expr_writer = expr.writer();
 
         try linereader.linenoise_wrapper.printPrompt(prompt);
         reader_loop: while (true) {
-            if (reader.readUntilDelimiterOrEofAlloc(mem.allocator, '\n', 2048)) |maybe| {
+            if (reader.readUntilDelimiterOrEofAlloc(gc.allocator(), '\n', 2048)) |maybe| {
                 if (maybe) |line| {
-                    defer mem.allocator.free(line);
                     SourceLocation.current().line += 1;
 
                     var only_seen_ws = true;
                     var inside_string = false;
                     for (line) |char| {
+                        if (char == ']') {std.process.exit(1);}
                         if (char == ';' and only_seen_ws) {
                             continue :reader_loop;
                         }
@@ -568,7 +572,6 @@ pub const Interpreter = struct {
         while (true) {
             if (self.readBalancedExpr(&linereader.linenoise_reader, "bio> ")) |maybe| {
                 if (maybe) |input| {
-                    defer mem.allocator.free(input);
                     _ = try linereader.linenoise_wrapper.addToHistory(input);
                     var maybeResult = self.parseAndEvalExpression(input) catch |err| {
                         try self.printErrorFmt(SourceLocation.current(), "read-eval failed: \n", .{});
@@ -586,8 +589,6 @@ pub const Interpreter = struct {
                     }
 
                     if (self.exit_code) |exit_code| {
-                        // Defer is not called as exit is [noreturn]
-                        mem.allocator.free(input);
                         self.deinit();
                         std.process.exit(exit_code);
                     }

@@ -3,6 +3,8 @@ const ast = @import("ast.zig");
 const interpreter = @import("interpreter.zig");
 const mem = @import("gc.zig");
 const SourceLocation = @import("sourcelocation.zig").SourceLocation;
+const gc = @import("boehm.zig");
+
 const Env = ast.Env;
 const Expr = ast.Expr;
 const ExprValue = ast.ExprValue;
@@ -129,8 +131,6 @@ pub fn requireMinimumArgCount(args_required: usize, args: []const *Expr) !void {
 pub fn requireType(ev: *Interpreter, expr: *Expr, etype: ExprType) !void {
     if (expr.val != etype) {
         const str = try expr.toStringAlloc();
-        defer mem.allocator.free(str);
-
         try ev.printErrorFmt(&expr.src, "Expected {}, got argument type: {}, actual value: {s}\n", .{ etype, std.meta.activeTag(expr.val), str });
         return ExprErrors.AlreadyReported;
     }
@@ -156,14 +156,9 @@ pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        var path = try std.fs.path.resolve(mem.allocator, &.{filename_expr.val.sym});
-        defer mem.allocator.free(path);
-
-        var file = try mem.allocator.create(std.fs.File);
-        errdefer mem.allocator.destroy(file);
-
-        const absolute_path = try std.fs.realpathAlloc(mem.allocator, path);
-        defer mem.allocator.free(absolute_path);
+        var path = try std.fs.path.resolve(gc.allocator(), &.{filename_expr.val.sym});
+        var file = try gc.allocator().create(std.fs.File);
+        const absolute_path = try std.fs.realpathAlloc(gc.allocator(), path);
 
         file.* = std.fs.createFileAbsolute(absolute_path, .{ .truncate = false, .read = true }) catch |err| {
             try ev.printErrorFmt(&filename_expr.src, "Could not open file: {}\n", .{err});
@@ -183,7 +178,6 @@ pub fn stdFileClose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     try requireType(ev, file_ptr, ExprType.any);
     const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
     file.close();
-    mem.allocator.destroy(file);
     return &expr_atom_nil;
 }
 
@@ -213,7 +207,7 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
         reader = file.reader();
     }
 
-    if (reader.readUntilDelimiterOrEofAlloc(mem.allocator, '\n', std.math.maxInt(usize))) |maybe| {
+    if (reader.readUntilDelimiterOrEofAlloc(gc.allocator(), '\n', std.math.maxInt(usize))) |maybe| {
         if (maybe) |line| {
             return ast.makeAtomAndTakeOwnership(line);
         } else {
@@ -273,7 +267,6 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
         while (!ev.has_errors) {
             if (ev.readBalancedExpr(&reader, "")) |maybe| {
                 if (maybe) |input| {
-                    defer mem.allocator.free(input);
                     if (try ev.parseAndEvalExpression(input)) |e| {
                         res = e;
                         try ev.env.put("#?", res);
@@ -295,7 +288,7 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
 pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env, args };
-    try mem.gc.run(true);
+    _ = gc.collect(.short);
     return &expr_atom_nil;
 }
 
@@ -313,7 +306,6 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
         try std.io.getStdOut().writer().print("Assertion failed {s} line {d}\n", .{ args[0].src.file, args[0].src.line });
 
         const str = try args[0].toStringAlloc();
-        defer mem.allocator.free(str);
         try std.io.getStdOut().writer().print("    Expression: {s}\n", .{str});
 
         std.process.exit(0);
@@ -326,20 +318,18 @@ pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
     _ = &.{ ev, env };
     const str = try expr.toStringAlloc();
-    defer mem.allocator.free(str);
-    return try std.mem.replaceOwned(u8, mem.allocator, str, "\\n", "\n");
+    return try std.mem.replaceOwned(u8, gc.allocator(), str, "\\n", "\n");
 }
 
 /// Implements (string expr...), i.e. rendering of expressions as strings
 pub fn stdString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var builder = std.ArrayList(u8).init(mem.allocator);
+    var builder = std.ArrayList(u8).init(gc.allocator());
     defer builder.deinit();
     const writer = builder.writer();
 
     for (args) |expr| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
-        defer mem.allocator.free(rendered);
         try writer.writeAll(rendered);
     }
     return ast.makeAtomByDuplicating(builder.items);
@@ -350,7 +340,6 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
     for (args, 0..) |expr, index| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
-        defer mem.allocator.free(rendered);
         try std.io.getStdOut().writer().print("{s}", .{rendered});
         if (index + 1 < args.len) {
             try std.io.getStdOut().writer().print(" ", .{});
@@ -381,12 +370,17 @@ pub fn stdParent(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
 /// Print environments. Runs the GC to minimize the environment listing, unless no-gc is passed.
 pub fn stdEnv(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
-    if (!(args.len > 0 and args[0].val == ExprType.sym and std.mem.eql(u8, args[0].val.sym, "no-gc"))) {
-        try mem.gc.run(false);
-    }
+    // if (!(args.len > 0 and args[0].val == ExprType.sym and std.mem.eql(u8, args[0].val.sym, "no-gc"))) {
+    //     _ = gc.collect(.aggressive);
+    // }
+
+    // _ = ev;
+    _ = args;
+
+    // try std.io.getStdOut().writer().print("Printing env isn't supported with boehmgc yet\n", .{});
 
     // Print out all environments, including which environment is the parent.
-    for (mem.gc.registered_envs.items) |registered_env| {
+    for (ev.registered_envs.items) |registered_env| {
         try std.io.getStdOut().writer().print("Environment for {s}: {*}\n", .{ registered_env.name, registered_env });
 
         var iter = registered_env.map.iterator();
@@ -608,7 +602,7 @@ pub fn stdIsOpaque(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
 pub fn stdGenSym(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(0, args);
     ev.gensym_seq += 1;
-    const sym = try std.fmt.allocPrint(mem.allocator, "gensym_{d}", .{ev.gensym_seq});
+    const sym = try std.fmt.allocPrint(gc.allocator(), "gensym_{d}", .{ev.gensym_seq});
     return ast.makeAtomAndTakeOwnership(sym);
 }
 
@@ -618,9 +612,7 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
     const arg = try ev.eval(env, args[0]);
 
     const rendered = try render(ev, env, arg);
-    defer mem.allocator.free(rendered);
-
-    const double_quoted = try std.fmt.allocPrint(mem.allocator, "\"{s}\"", .{rendered});
+    const double_quoted = try std.fmt.allocPrint(gc.allocator(), "\"{s}\"", .{rendered});
     return ast.makeAtomAndTakeOwnership(double_quoted);
 }
 
@@ -1042,16 +1034,15 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         switch (expr.val) {
             ExprType.sym => return expr,
             ExprType.num => |num| {
-                const val = try std.fmt.allocPrint(mem.allocator, "{d}", .{num});
+                const val = try std.fmt.allocPrint(gc.allocator(), "{d}", .{num});
                 return ast.makeAtomLiteral(val, true);
             },
             ExprType.lst => |lst| {
-                var res = std.ArrayList(u8).init(mem.allocator);
+                var res = std.ArrayList(u8).init(gc.allocator());
                 var exprWriter = res.writer();
                 defer res.deinit();
                 for (lst.items) |item| {
                     const str = try item.toStringAlloc();
-                    defer mem.allocator.free(str);
                     try exprWriter.writeAll(str);
                 }
                 return ast.makeAtomByDuplicating(res.items);
@@ -1259,7 +1250,7 @@ pub fn stdLowercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     try requireExactArgCount(1, args);
     var sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
-    const result = try std.ascii.allocLowerString(mem.allocator, sym.val.sym);
+    const result = try std.ascii.allocLowerString(gc.allocator(), sym.val.sym);
     return try ast.makeAtomAndTakeOwnership(result);
 }
 
@@ -1268,7 +1259,7 @@ pub fn stdUppercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     try requireExactArgCount(1, args);
     var sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
-    const result = try std.ascii.allocUpperString(mem.allocator, sym.val.sym);
+    const result = try std.ascii.allocUpperString(gc.allocator(), sym.val.sym);
     return try ast.makeAtomAndTakeOwnership(result);
 }
 
