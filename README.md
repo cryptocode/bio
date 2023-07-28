@@ -1279,64 +1279,48 @@ A Bio module is a module *by convention*, somewhat similar to classical Javascri
     - module-version, a list of numbers signifying major, major, and patch
     - module-description, an *optional* description of the module
 
+## Modules
+A Bio module is a module *by convention*, somewhat similar to classical Javascript modules:
+
+1. A `mod-<modulename>.lisp` file with the contents wrapped in a lambda call
+2. The last expression is `(self)`, making the environment available to the importer
+3. The following definitions are available:
+    - module-name, a string describing the module
+    - module-version, a list of numbers signifying major, major, and patch
+    - module-description, an *optional* description of the module
+
 ### Module example
 
-Below is `mod-point.lisp`, which in this example is placed in a subdirectory called `modules`
+The examples directory contains a sample module called `mod-pos.lisp`
+
+To use the module in a REPL:
 
 ```scheme
-((lambda ()
-    ; Functions shared between types are actually macros so their parent
-    ; environment is the calling environment; this way x and y will be found
-    (var generic-update (macro (new-x new-y)
-        (set! x new-x)
-        (set! y new-y)
-        nil
-    ))
+bio>  (var Point (import "examples/mod-pos.lisp"))
+<env>
 
-    ; A point datatype with regular formatting
-    (var new-point (lambda (x y)
-        (var update generic-update)
-        (var as-string (lambda ()
-            (string x " " y)
-        ))
-        (self)
-    ))
+bio>  (var pt (Point (new-point 2 5.4)))
+<env>
 
-    ; A version with longitude and latitude formatting
-    (var new-location (lambda (x y)
-        (var update generic-update)
-        (var as-string (lambda ()
-            (string
-                (math.abs x) (if (< x 0) "° S" "° N")
-                "  "
-                (math.abs y) (if (< y 0) "° W" "° E"))
-        ))
-        (self)
-    ))
+bio> (pt x)
+2
 
-    (var module-name "Position Module")
-    (var module-version '(1 0 0))
-    (self)
-))
+bio> (pt y)
+5.4
 
+bio> (pt (as-string))
+2 5.4
 
-```
+bio> (var loc (Point (new-location 100.5 200.5)))
+<env>
 
-To use the module:
+bio> (loc x)
+100.5
 
-```scheme
-(var Point (import "modules/mod-point.lisp"))
+bio> (loc y)
+200.5
 
-(var pt (Point new-location 24.5 69.2))
-
-(pt x)
-24.5
-
-((pt as-string))
-24.5 °N  69.2 °E
-
-; Call update in two different ways
-((pt update) 25.4 70.5)
-(pt (update 25.4 70.5))
+bio> (loc (as-string))
+100.5° N  200.5° E
 
 ```
