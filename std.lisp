@@ -128,6 +128,15 @@
 (var *= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (* ,/expr1 ,@/expr2))))
 (var /= (macro (/expr1 &rest /expr2) `(set! ,/expr1 (/ ,/expr1 ,@/expr2))))
 
+; The fun macro, which creates a lambda expression and binds it to a variable
+; This is a more convenient way to create functions than using (var name (lambda (args) body))
+; Example: (fun double (x) (* x 2))
+;          (double 100)
+;          200
+(var fun (macro (/name /args &rest /body)
+    `(var ,/name (lambda (,@/args) ,@/body)
+)))
+
 ; The let macro, which makes a new scope with an arbitrary number of local bindings
 ; The transformation goes like this:
 ;

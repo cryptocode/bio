@@ -375,7 +375,7 @@ pub const Interpreter = struct {
                                     return result;
                                 }
 
-                                env = local_env;
+                                env = parent_env.?;
                                 maybe_next = result;
                                 continue;
                             }
