@@ -156,11 +156,8 @@ pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        var path = try std.fs.path.resolve(gc.allocator(), &.{filename_expr.val.sym});
         var file = try gc.allocator().create(std.fs.File);
-        const absolute_path = try std.fs.realpathAlloc(gc.allocator(), path);
-
-        file.* = std.fs.createFileAbsolute(absolute_path, .{ .truncate = false, .read = true }) catch |err| {
+        file.* = std.fs.cwd().createFile(filename_expr.val.sym, .{ .truncate = false, .read = true }) catch |err| {
             try ev.printErrorFmt(&filename_expr.src, "Could not open file: {}\n", .{err});
             return err;
         };
