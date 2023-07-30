@@ -33,7 +33,7 @@ Table of Contents
          * [equality](#equality)
          * [order](#order)
          * [env and gc](#env-and-gc)
-         * [lambda and λ](#lambda-and-λ)
+         * [fun, lambda and λ](#lambda-and-λ)
          * [macro](#macro)
          * [macroexpand](#macroexpand)
          * [self and environment lookups](#self-and-environment-lookups)
@@ -359,7 +359,19 @@ Garbage collected 161 items
 
 The garbage collector runs periodically, though the criteria and extent are intentionally left undefined by this language reference.
 
-### lambda and λ
+### fun, lambda and λ
+
+Creating functions in Bio can be done either with `fun` or `lambda`. The `fun` function is just a convenience macro that expands to a lambda definition.
+
+```scheme
+> (fun square (x) (* x x))
+> (square 5)
+25
+```
+
+Below is the equivalent lambda definition:
+
+```scheme
 
 The `lambda` function creates an anonymous function. Lambdas are usually bound to a variable, but can also be invoked directly or passed and returned as values.
 
