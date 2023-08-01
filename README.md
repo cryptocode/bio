@@ -372,10 +372,6 @@ Creating functions in Bio can be done either with `fun` or `lambda`. The `fun` f
 Below is the equivalent lambda definition:
 
 ```scheme
-
-The `lambda` function creates an anonymous function. Lambdas are usually bound to a variable, but can also be invoked directly or passed and returned as values.
-
-```scheme
 > (var square (lambda (x) (* x x)))
 > (square 5)
 25
