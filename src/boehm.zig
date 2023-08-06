@@ -37,7 +37,9 @@ pub const GCKind = enum {
 /// Returns true if collection is completed. It's possible to call this in a loop until it returns true (only useful for .short)
 pub fn collect(kind: GCKind) bool {
     switch (kind) {
-        .short => {if (gc.GC_collect_a_little() != 0) return false;},
+        .short => {
+            if (gc.GC_collect_a_little() != 0) return false;
+        },
         .normal => gc.GC_gcollect(),
         .aggressive => gc.GC_gcollect_and_unmap(),
         else => {},
@@ -47,7 +49,7 @@ pub fn collect(kind: GCKind) bool {
 }
 
 pub fn setMaxHeap(max_size: usize) void {
-    gc.GC_set_max_heap_size(max_size);    
+    gc.GC_set_max_heap_size(max_size);
 }
 
 pub fn memUsage() usize {
@@ -85,12 +87,12 @@ pub const BoehmGcAllocator = struct {
     }
 
     fn resize(_: *anyopaque, buf: []u8, log2_buf_align: u8, new_len: usize, return_address: usize) bool {
-        _ = .{log2_buf_align, return_address, buf, new_len};
+        _ = .{ log2_buf_align, return_address, buf, new_len };
         return false;
     }
 
     fn free(_: *anyopaque, buf: []u8, log2_buf_align: u8, return_address: usize) void {
-        _ = .{buf, log2_buf_align, return_address};
+        _ = .{ buf, log2_buf_align, return_address };
     }
 };
 

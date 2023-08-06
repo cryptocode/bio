@@ -28,7 +28,9 @@ pub const Interpreter = struct {
 
         var allocator = gc.allocator();
         var instance = try allocator.create(Interpreter);
-        instance.* = Interpreter{ .env = try ast.makeEnv(null, "global"), .allocator = gc.allocator(), 
+        instance.* = Interpreter{
+            .env = try ast.makeEnv(null, "global"),
+            .allocator = gc.allocator(),
             .registered_envs = std.ArrayList(*Env).init(allocator),
         };
         try instance.registered_envs.append(instance.env);
@@ -503,7 +505,9 @@ pub const Interpreter = struct {
                     var only_seen_ws = true;
                     var inside_string = false;
                     for (line) |char| {
-                        if (char == ']') {std.process.exit(1);}
+                        if (char == ']') {
+                            std.process.exit(1);
+                        }
                         if (char == ';' and only_seen_ws) {
                             continue :reader_loop;
                         }

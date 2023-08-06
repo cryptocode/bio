@@ -1,9 +1,8 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const interpreter = @import("interpreter.zig");
-const mem = @import("gc.zig");
-const SourceLocation = @import("sourcelocation.zig").SourceLocation;
 const gc = @import("boehm.zig");
+const SourceLocation = @import("sourcelocation.zig").SourceLocation;
 
 const Env = ast.Env;
 const Expr = ast.Expr;

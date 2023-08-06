@@ -23,9 +23,9 @@ pub fn build(b: *std.build.Builder) void {
         if (target.isDarwin()) {
             gc.linkFramework("CoreServices");
         }
-        gc.addIncludePath("deps/github.com/ivmai/bdwgc/include");
+        gc.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
         inline for (libgc_srcs) |src| {
-            gc.addCSourceFile("deps/github.com/ivmai/bdwgc/" ++ src, &cflags);
+            gc.addCSourceFile(.{ .file = .{ .path = "deps/github.com/ivmai/bdwgc/" ++ src }, .flags = &cflags });
         }
 
         const gc_step = b.step("libgc", "build libgc");
@@ -38,16 +38,16 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-    exe.addIncludePath("deps/github.com/ivmai/bdwgc/include");
+    exe.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
     exe.linkLibC();
     exe.linkLibrary(gc);
 
     if (!target.isWindows()) {
-        exe.addCSourceFile("deps/linenoise.c", &[_][]const u8{"-std=c99", "-Wno-everything"});
-        exe.addIncludePath("deps");
+        exe.addCSourceFile(.{ .file = .{ .path = "deps/linenoise.c" }, .flags = &[_][]const u8{ "-std=c99", "-Wno-everything" } });
+        exe.addIncludePath(.{ .path = "deps" });
     }
 
-    var inst = b.addInstallArtifact(exe);
+    var inst = b.addInstallArtifact(exe, .{});
     b.getInstallStep().dependOn(&inst.step);
 
     const run_cmd = b.addRunArtifact(exe);
