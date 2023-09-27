@@ -6,12 +6,32 @@ Features include macros, garbage collection, error handling, an object/module fa
 
 A description of the project is available [in this blog post](https://cryptocode.github.io/blog/docs/bio-introduction/)
 
+Example:
+
 ```scheme
 (filter
     (quicksort '(5 40 1 -3 2) <)
         (λ (x) (>= x 0)))
 
 (1 2 5 40)
+```
+
+The core of Bio is lambda expressions, from which the standard library builds syntax like `type` and `fun`:
+
+```scheme
+; Create a composite type. This is sugar for `(var Point (lambda (x y) ... (self)))`
+(type Point (x y) 
+    (fun area () (* x y))
+)
+
+; Make an instance of Point
+(var pt (Point 5 7))
+
+; Call a member function. All this is just syntax sugar based on a lambda
+; returning its own environment.
+(print "Area:" (pt (area)) '\n)
+
+Area: 35
 ```
 
 Table of Contents
