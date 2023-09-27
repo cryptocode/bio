@@ -21,8 +21,7 @@ The core of Bio is lambda expressions, from which the standard library builds sy
 ```scheme
 ; Create a composite type. This is sugar for `(var Point (lambda (x y) ... (self)))`
 (type Point (x y) 
-    (fun area () (* x y))
-)
+    (fun area () (* x y)))
 
 ; Make an instance of Point
 (var pt (Point 5 7))
