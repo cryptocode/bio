@@ -321,6 +321,13 @@
     ; Test correct scoping of unset!
     (assert (= 5 (begin (var x 5) (var local (lambda () (begin (var x 100) (unset! x)))) (local) x)))
 
+    ; Test type and set!!
+    (type SomeType () (var local 5))
+    (var some-instance (SomeType))
+    (var callee-local 6)
+    (set!! some-instance local callee-local)
+    (assert (= 6 (some-instance local)))
+    
     ; Test gensym
     (var gensym-test
         (macro ()

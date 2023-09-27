@@ -31,7 +31,7 @@
 
     ; Both point types adopt this as their "update" function, but each
     ; point type have their own implementation of the "as-string" function.
-    ; This is a macro, so x and y is available in the environment.
+    ; This is a macro, so x and y is expected to be available in the callee environment.
     (var generic-update (macro (new-x new-y)
         (set! x new-x)
         (set! y new-y)

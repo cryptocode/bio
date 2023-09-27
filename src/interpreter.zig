@@ -254,7 +254,7 @@ pub const Interpreter = struct {
                         }
                     }
 
-                    // Look up std function or lambda. If not found, the lookup has already reported the error.
+                    // Look up std function, lambda, macro or env. If not found, the lookup has already reported the error.
                     var func = try self.eval(env, list.items[0]);
                     if (func == &intrinsics.expr_atom_nil) {
                         return &intrinsics.expr_atom_nil;
@@ -262,6 +262,7 @@ pub const Interpreter = struct {
 
                     const kind = func.val;
                     switch (kind) {
+                        // Look up a symbol or call a function in the given environment
                         ExprValue.env => |target_env| {
                             if (args_slice.len == 0 or (args_slice[0].val != ExprType.sym and args_slice[0].val != ExprType.lst)) {
                                 try self.printErrorFmt(&e.src, "Missing symbol or call in environment lookup: ", .{});
@@ -302,11 +303,13 @@ pub const Interpreter = struct {
 
                             var local_env = try ast.makeEnv(parent_env, kind_str);
                             try self.registered_envs.append(local_env);
-                            var formal_param_count = fun.items[0].val.lst.items.len;
+                            var formals = fun.items[0].val.lst.items;
+                            var formal_param_count = formals.len;
                             var logical_arg_count = args_slice.len;
+                            var eval_formal_count: usize = 0;
 
                             // Bind arguments to the new environment
-                            for (fun.items[0].val.lst.items, 0..) |param, index| {
+                            for (formals, 0..) |param, index| {
                                 if (param.val == ExprType.sym) {
                                     if (param == &intrinsics.expr_atom_rest) {
                                         formal_param_count -= 1;
@@ -321,14 +324,23 @@ pub const Interpreter = struct {
                                         }
 
                                         logical_arg_count += 1;
-                                        try local_env.putWithSymbol(fun.items[0].val.lst.items[index + 1], rest_args);
+                                        try local_env.putWithSymbol(formals[index + 1], rest_args);
                                         break;
                                     }
 
-                                    // Arguments are eagerly evaluated for lambdas, lazily for macros
-                                    if (index < args_slice.len) {
-                                        if (kind == ExprType.lam) {
-                                            try local_env.putWithSymbol(param, try self.eval(env, args_slice[index]));
+                                    if (param == &intrinsics.expr_atom_eval) {
+                                        eval_formal_count += 1;
+                                        formal_param_count -= 1;
+                                        continue;
+                                    }
+                                    // Arguments are eagerly evaluated for lambdas, lazily for macros (that is, the expression is passed unevaluated)
+                                    // If a macro formal parameter is preceded by "&eval", then that argument is eagerly evaluated anyway.
+                                    // This is sometimes useful when writing macros that evaluates under a different environment. See "set!!"
+                                    // in std.lisp for an example.
+                                    if (index - eval_formal_count < args_slice.len) {
+                                        if (kind == ExprType.lam or eval_formal_count > 0) {
+                                            try local_env.putWithSymbol(param, try self.eval(env, args_slice[index - eval_formal_count]));
+                                            eval_formal_count = 0;
                                         } else {
                                             try local_env.putWithSymbol(param, args_slice[index]);
                                         }
@@ -353,7 +365,6 @@ pub const Interpreter = struct {
                                     return &intrinsics.expr_atom_nil;
                                 };
                                 if (self.has_errors) {
-                                    std.debug.print("--- There are errors\n", .{});
                                     return &intrinsics.expr_atom_nil;
                                 }
                             }

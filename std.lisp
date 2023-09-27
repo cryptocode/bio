@@ -23,6 +23,8 @@
     (item-at index list)
 ))
 
+(var first (lambda (list) (car list)))
+
 ; Negative range indices means "from the end"
 (var last (lambda (list) (car (range list (- 1)))))
 (var pop-last! (lambda (list) (item-remove! (- (len list) 1) list)))
@@ -135,6 +137,12 @@
 ;          200
 (var fun (macro (/name /args &rest /body)
     `(var ,/name (lambda (,@/args) ,@/body)
+)))
+
+; A type is just a function that return its own environment. This is syntax sugar
+; for (fun MyType () ... (self)), or the equivalent lambda expression.
+(var type (macro (/name /args &rest /body)
+    `(var ,/name (lambda (,@/args) ,@/body (self))
 )))
 
 ; The let macro, which makes a new scope with an arbitrary number of local bindings
@@ -407,6 +415,12 @@
     (if (nil? n)
         (error (as symbol (list input " is not a number")))
         n)
+))
+
+; Set a variable in a different environment, to the value `local` which must be
+; located in the macro-callee environment.
+(var set!! (macro (env prop &eval local)
+  `(,env (set! ,prop ,local))
 ))
 
 ; Increment variable

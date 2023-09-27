@@ -34,6 +34,7 @@ Table of Contents
          * [order](#order)
          * [env and gc](#env-and-gc)
          * [fun, lambda and λ](#lambda-and-λ)
+         * [type](#type)
          * [macro](#macro)
          * [macroexpand](#macroexpand)
          * [self and environment lookups](#self-and-environment-lookups)
@@ -107,7 +108,7 @@ Clone the repository and cd to the root directory.
 
 You'll need a recent [master build of Zig](https://ziglang.org/download/)
 
-Last tested with Zig version `0.11.0-dev.4003+c6aa29b6f`
+Last tested with Zig version `0.12.0-dev.395+2651363c9`
 
 **Build**
 
@@ -392,11 +393,28 @@ The lambda symbol can be used in place of the lambda identifier
 
 A lambda invocation has its own environment, and the parent environment is the one that existed when the lambda was defined. In other words, Bio is lexically scoped.
 
+### type
+
+A type expression is syntax sugar for functions returning their own environment. This is useful when making composite types.
+
+```scheme
+(type Point (x y)
+    (fun area () (* x y))
+)
+
+(var pt (Point 5 7))
+(print "Area:" (pt (area)) '\n)
+```
+
+Composite types can contain local variables and other functions, just like regular lambda expression.
+
 ### macro
 
 This function creates a macro.
 
-Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so.
+Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so. Note
+that eager evaluation of macro arguments can be forced by placed `&eval` in front of the formal parameter. See the `set!!` function
+in the standard library for an example of doing this.
 
 When the macro is invoked, the body is evaluated. The returned expression (which represents Bio code) is then evaluated as the final result.
 

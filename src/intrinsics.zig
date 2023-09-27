@@ -29,6 +29,7 @@ pub var expr_atom_true = Expr{ .val = ExprValue{ .sym = "#t" } };
 pub var expr_atom_nil = Expr{ .val = ExprValue{ .sym = "nil" } };
 pub var expr_atom_rest = Expr{ .val = ExprValue{ .sym = "&rest" } };
 pub var expr_atom_mut = Expr{ .val = ExprValue{ .sym = "&mut" } };
+pub var expr_atom_eval = Expr{ .val = ExprValue{ .sym = "&eval" } };
 pub var expr_atom_break = Expr{ .val = ExprValue{ .sym = "&break" } };
 pub var expr_atom_macroexpand = Expr{ .val = ExprValue{ .sym = "macroexpand" } };
 pub var expr_std_math_pi = Expr{ .val = ExprValue{ .num = std.math.pi } };
@@ -1456,6 +1457,7 @@ pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 /// Put a variable into the given environment. If the symbol is already in the environment, the
 /// `allow_redefinition` flag decides between overwritting and emitting an error.
 fn putEnv(ev: *Interpreter, env: *Env, args: []const *Expr, allow_redefinition: bool) anyerror!*Expr {
+    // Non-recursive lookup, because Bio allows shadowing
     if (env.lookup(args[0].val.sym, false) != null and !allow_redefinition) {
         try ev.printErrorFmt(&args[0].src, "{s} is already defined\n", .{args[0].val.sym});
         return ExprErrors.AlreadyReported;
