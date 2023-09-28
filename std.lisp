@@ -417,12 +417,6 @@
         n)
 ))
 
-; Set a variable in a different environment, to the value `local` which must be
-; located in the macro-callee environment.
-(var set!! (macro (env prop &eval local)
-  `(,env (set! ,prop ,local))
-))
-
 ; Increment variable
 (var inc! (macro (/var)
     `(set! ,/var (+ ,/var 1))

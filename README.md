@@ -302,6 +302,25 @@ Changes the value of an existing binding (values themselves are immutable). The 
 (var x 'hey)
 ```
 
+You can optionally pass a specific environment for the binding being set as the first argument:
+
+
+```scheme
+(type Point (x y)
+    (fun area () (* x y)))
+
+(var pt (Point 5 7))
+(print "Area:" (pt (area)) '\n)
+
+Area: 35
+
+; Change x by passing the pt environment to set!
+(set! pt x 6)
+(print "Area:" (pt (area)) '\n)
+
+Area: 42
+```
+
 ### arithmetic functions
 
 The arithmetic functions work on floating-point numbers. Unlike infix notation, any number of arguments can be given.
@@ -423,6 +442,10 @@ A type expression is syntax sugar for functions returning their own environment.
 
 (var pt (Point 5 7))
 (print "Area:" (pt (area)) '\n)
+
+; Change x by passing the pt environment to set!
+(set! pt x 6)
+(print "Area:" (pt (area)) '\n)
 ```
 
 Composite types can contain local variables and other functions, just like regular lambda expression.
@@ -432,9 +455,8 @@ Composite types can contain local variables and other functions, just like regul
 This function creates a macro.
 
 Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so. Note
-that eager evaluation of macro arguments can be forced by placed `&eval` in front of the formal parameter. See the `set!!` function
-in the standard library for an example of doing this.
-
+that eager evaluation of macro arguments can be forced by placed `&eval` in front of the formal parameter.
+ 
 When the macro is invoked, the body is evaluated. The returned expression (which represents Bio code) is then evaluated as the final result.
 
 ```scheme

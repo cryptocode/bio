@@ -1498,11 +1498,23 @@ pub fn stdVars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
     return list;
 }
 
-/// Replace binding
+/// Replace binding in the current environment, or another environment if specified.
+/// In the current environment:
+///   (set! mylocal 4)
+/// In a different environment:
+///   (set! window width 50)
 pub fn stdSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    try requireExactArgCount(2, args);
-    try requireType(ev, args[0], ExprType.sym);
-    return env.replace(args[0], try ev.eval(env, args[1]));
+    if (args.len == 2) {
+        try requireType(ev, args[0], ExprType.sym);
+        return env.replace(args[0], try ev.eval(env, args[1]));
+    } else if (args.len == 3) {
+        try requireType(ev, args[1], ExprType.sym);
+        var target_env = try ev.eval(env, args[0]);
+        try requireType(ev, target_env, ExprType.env);
+        return target_env.val.env.replace(args[1], try ev.eval(env, args[2]));
+    } else {
+        return ExprErrors.InvalidArgumentCount;
+    }
 }
 
 /// Remove binding if it exists

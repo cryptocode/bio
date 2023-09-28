@@ -166,6 +166,7 @@ pub const Interpreter = struct {
     pub fn eval(self: *Interpreter, environment: *Env, expr: *Expr) anyerror!*Expr {
         var maybe_next: ?*Expr = expr;
         var env: *Env = environment;
+        var func_lookup_env: ?*Env = null;
         var seen_macro_expand = false;
         self.has_errors = false;
 
@@ -255,7 +256,8 @@ pub const Interpreter = struct {
                     }
 
                     // Look up std function, lambda, macro or env. If not found, the lookup has already reported the error.
-                    var func = try self.eval(env, list.items[0]);
+                    var func = try self.eval(if (func_lookup_env) |fle| fle else env, list.items[0]);
+                    func_lookup_env = null;
                     if (func == &intrinsics.expr_atom_nil) {
                         return &intrinsics.expr_atom_nil;
                     }
@@ -276,7 +278,7 @@ pub const Interpreter = struct {
 
                             if (args_slice[0].val == ExprType.lst) {
                                 maybe_next = args_slice[0];
-                                env = target_env;
+                                func_lookup_env = target_env;
                                 continue :tailcall_optimization_loop;
                             } else if (target_env.lookup(args_slice[0].val.sym, false)) |match| {
                                 return match;
