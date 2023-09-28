@@ -337,8 +337,6 @@ pub const Interpreter = struct {
                                     }
                                     // Arguments are eagerly evaluated for lambdas, lazily for macros (that is, the expression is passed unevaluated)
                                     // If a macro formal parameter is preceded by "&eval", then that argument is eagerly evaluated anyway.
-                                    // This is sometimes useful when writing macros that evaluates under a different environment. See "set!!"
-                                    // in std.lisp for an example.
                                     if (index - eval_formal_count < args_slice.len) {
                                         if (kind == ExprType.lam or eval_formal_count > 0) {
                                             try local_env.putWithSymbol(param, try self.eval(env, args_slice[index - eval_formal_count]));
