@@ -147,15 +147,16 @@ pub const Interpreter = struct {
             ExprErrors.MissingRightParen => "Missing )",
             ExprErrors.SyntaxError => "Syntax error while parsing",
             ExprErrors.Eof => "End of file",
+            ExprErrors.BindingNotFound => "Binding not found",
             else => "Unknown",
         };
-        try std.io.getStdOut().writer().print("{s}\n", .{err_str});
+        try std.io.getStdErr().writer().print("{s}\n", .{err_str});
     }
 
     /// Print a formatted error message, prefixed with source location
     pub fn printErrorFmt(self: *Interpreter, src_loc: *SourceLocation, comptime fmt: []const u8, args: anytype) !void {
-        try std.io.getStdOut().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, @max(1, src_loc.line) });
-        try std.io.getStdOut().writer().print(fmt, args);
+        try std.io.getStdErr().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, @max(1, src_loc.line) });
+        try std.io.getStdErr().writer().print(fmt, args);
         // for (SourceLocation.stack.items) |loc| {
         //     try std.io.getStdOut().writer().print("    {s}:{d}", .{loc.file, std.math.max(1, loc.line)});
         // }

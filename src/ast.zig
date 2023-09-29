@@ -10,7 +10,7 @@ var interned_syms: std.StringArrayHashMapUnmanaged(void) = .{};
 var interned_nums: std.AutoHashMapUnmanaged(i16, *Expr) = .{};
 
 pub const IntrinsicFn = *const fn (evaluator: *interpreter.Interpreter, env: *Env, []const *Expr) anyerror!*Expr;
-pub const ExprErrors = error{ AlreadyReported, MissingRightParen, UnexpectedRightParen, ExpectedNumber, ExpectedBool, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof };
+pub const ExprErrors = error{ AlreadyReported, MissingRightParen, UnexpectedRightParen, ExpectedNumber, ExpectedBool, InvalidArgumentType, InvalidArgumentCount, SyntaxError, Eof, BindingNotFound };
 pub const ExprType = enum(u8) { sym, num, lst, map, lam, mac, fun, env, err, any };
 pub const ExprValue = union(ExprType) {
     sym: []const u8,
@@ -197,19 +197,23 @@ pub const Env = struct {
 
     /// Recursively search for the binding, replace it if found.
     /// If the new value is null, the binding is removed instead.
-    pub fn replace(self: *Env, var_name: *Expr, val: ?*Expr) *Expr {
+    /// If the binding is found, then then `val` is returned. This makes
+    /// it possible to implement macros such as =+
+    /// If the binding is not found, an error is returned.
+    pub fn replace(self: *Env, var_name: *Expr, val: ?*Expr) !*Expr {
         if (self.map.get(var_name)) |_| {
             if (val) |value| {
-                self.putWithSymbol(var_name, value) catch return &intrinsics.expr_atom_nil;
+                try self.putWithSymbol(var_name, value);
                 return value;
             } else {
                 _ = self.map.swapRemove(var_name);
+                return &intrinsics.expr_atom_nil;
             }
         } else if (self.parent) |parent| {
-            return parent.replace(var_name, val);
+            return try parent.replace(var_name, val);
         }
 
-        return &intrinsics.expr_atom_nil;
+        return ExprErrors.BindingNotFound;
     }
 };
 

@@ -1506,12 +1506,20 @@ pub fn stdVars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 pub fn stdSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     if (args.len == 2) {
         try requireType(ev, args[0], ExprType.sym);
-        return env.replace(args[0], try ev.eval(env, args[1]));
+        return env.replace(args[0], try ev.eval(env, args[1])) catch |err| {
+            try ev.printError(err);
+            try ev.printErrorFmt(&args[0].src, "Could not set variable {s}. Make sure it is defined in the active environment.\n", .{args[0].val.sym});
+            return ExprErrors.AlreadyReported;
+        };
     } else if (args.len == 3) {
         try requireType(ev, args[1], ExprType.sym);
         var target_env = try ev.eval(env, args[0]);
         try requireType(ev, target_env, ExprType.env);
-        return target_env.val.env.replace(args[1], try ev.eval(env, args[2]));
+        return target_env.val.env.replace(args[1], try ev.eval(env, args[2])) catch |err| {
+            try ev.printError(err);
+            try ev.printErrorFmt(&args[0].src, "Could not set variable {s}. Make sure it is defined in the active environment.\n", .{args[0].val.sym});
+            return ExprErrors.AlreadyReported;
+        };
     } else {
         return ExprErrors.InvalidArgumentCount;
     }
@@ -1521,6 +1529,6 @@ pub fn stdSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 pub fn stdUnset(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     try requireType(ev, args[0], ExprType.sym);
-    _ = env.replace(args[0], null);
+    _ = env.replace(args[0], null) catch return &expr_atom_nil;
     return &expr_atom_nil;
 }

@@ -23,6 +23,11 @@
     (assert (= 2 (math.min '(5 3 9 2 4 2 5 6))))
     (assert (= 9 (math.max '(5 3 9 2 4 9 5 6))))
 
+    (assert (math.between 4 1 10))
+    (assert (math.between 4 4 4))
+    (assert (not (math.between 4 2 3)))
+    (assert (not (math.between 4 5 6)))
+
     (var nums-iterated '())
     (list.iterate nums (λ (val)
         (item-append! nums-iterated val)
@@ -48,6 +53,10 @@
     (set! updateble '(1 2 3))
     (assert (= 2 (item-remove! 1 updateble)))
     (assert (= '(1 3) updateble))
+
+    ; set! returns the new value to allow for chaining
+    (var set-me 1)
+    (assert (= 2 (set! set-me 2)))
 
     (assert (atom? 'a))
     (assert (number? 5))

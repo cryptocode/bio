@@ -15,13 +15,11 @@
 
 (var nth-orelse (lambda (index list default)
     (var item (item-at index list))
-    (if item item default)
-))
+    (if item item default)))
 
 ; The n'th item in a list, or nil if out of bounds
 (var nth (lambda (index list)
-    (item-at index list)
-))
+    (item-at index list)))
 
 (var first (lambda (list) (car list)))
 
@@ -37,8 +35,7 @@
 
 ; In-place append an item to a list
 (var item-append! (λ (list item)
-    (item-set (len list) list item)
-))
+    (item-set (len list) list item)))
 
 ; Interpret a list as digits in a binary number, convert to number. Any non-zero
 ; list item is interpreted as 1 so '(12 0 1 0 0 23) is 1 0 1 0 0 1 = 41
@@ -49,8 +46,7 @@
         (var item (range list index))
         (if (> (car item) 0) (+= res (math.pow 2 n)))
     ))
-    res
-))
+    res))
 
 ; In-place reverse a list; returns the list
 (var reverse! (λ (list)
@@ -61,32 +57,27 @@
         (item-set i list (item-at (- length i 1) list))
         (item-set (- length i 1) list tmp)
     )
-    list
-))
+    list))
 
 ; Creates a list containing `value`, `count` times
 ; (listof 10 3) => '(10 10 10)
 (var listof (λ (value count)
     (var list '())
     (loop 'idx '(0 count) (item-set idx list value))
-    list
-))
+    list))
 
 ; Returns the index of the item, or nil if it doesn't exist
 (var indexof (λ (list item)
     (var res nil)
     (loop 'idx '(0 (len list))
-        (if (= (item-at idx list) item) (begin (set! res idx) &break))
-    )
-    res
-))
+        (if (= (item-at idx list) item) (begin (set! res idx) &break))    )
+    res))
 
 ; In-place replacement of first match in a list
 (var replace-first! (λ (list item replacement)
     (var idx (indexof list item))
     (if idx (item-set idx list replacement))
-    list
-))
+    list))
 
 ; In-place replacement of all matches in a list
 (var replace-all! (λ (list item replacement)
@@ -95,8 +86,7 @@
         (set! idx (indexof list item))
         (if idx (item-set idx list replacement) &break)
     )
-    list
-))
+    list))
 
 ; Update an item in-place by applying the given operation and operand
 ; (item-apply! idx list + 5)
@@ -104,9 +94,7 @@
     (item-set
         index
         list
-        (op (item-at index list) operand)
-    )
-))
+        (op (item-at index list) operand))))
 
 ; Copy a list
 (var copy-list (λ (original-list)
@@ -435,6 +423,10 @@
     )
 ))
 
+; Returns true if `val` is between two numbers, inclusive.
+(fun math.between (val start-inclusive end-inclusive)
+    (and (>= val start-inclusive) (<= val end-inclusive)))
+
 (var math.mod (lambda (num div) (- num (* div (math.floor (/ num div))))))
 
 ; Division that emits an error for zero denominators
@@ -446,11 +438,10 @@
 ))
 
 ; Absolute value of x
-(var math.abs (lambda (x)
+(fun math.abs (x)
 	(if (< x 0)
 		(- x)
-		x)
-))
+		x))
 
 ; Average of a list of numbers, 0 if the list is empty
 (var math.avg (lambda (x)
@@ -515,6 +506,15 @@
 
 ; π alias
 (var π math.pi)
+
+; Note that bits = 64 will cause rounding errors, since Bio internally use 64 bit floating point for numbers
+(fun math.max-int (bits)
+    (cond
+        ((= bits  8) 255)
+        ((= bits 16) 65535)
+        ((= bits 32) 4294967295)
+        ((= bits 64) 18446744073709551615)
+        (255)))
 
 ; Given an expression, return the type name
 (var typename (lambda (x)
