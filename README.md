@@ -2,9 +2,7 @@
 
 Bio is an experimental Lisp dialect similar to Scheme, with an interpreter written in [Zig](https://ziglang.org)
 
-Features include macros, garbage collection, error handling, an object/module facility, and a standard library.
-
-A description of the project is available [in this blog post](https://cryptocode.github.io/blog/docs/bio-introduction/)
+Features include macros, garbage collection, error handling, a module facility, destructuring, and a standard library.
 
 Example:
 
@@ -33,6 +31,8 @@ The core of Bio is lambda expressions, from which the standard library builds sy
 Area: 35
 ```
 
+The documentation, like the language, is work in progress. For up-to-date examples, I recommend studying `std.lisp`, `test.lisp` and the files in the `examples` directory.
+
 Table of Contents
 =================
 
@@ -47,6 +47,7 @@ Table of Contents
          * [typename](#typename)
          * [number? symbol? list? bool? callable? error?](#number-symbol-list-bool-callable-error)
          * [var and define](#var-and-define)
+         * [vars](#vars)
          * [set! and unset!](#set-and-unset)
          * [arithmetic functions](#arithmetic-functions)
          * [equality](#equality)
@@ -81,7 +82,7 @@ Table of Contents
          * [import](#import)
          * [assert](#assert)
          * [exit](#exit)
-         * [verbose](#verbose)
+         * [debug-verbose](#debug-verbose)
          * [math.pi and math.e](#mathpi-and-mathe)
          * [math.floor](#mathfloor)
          * [string.split](#stringsplit)
@@ -127,7 +128,7 @@ Clone the repository and cd to the root directory.
 
 You'll need a recent [master build of Zig](https://ziglang.org/download/)
 
-Last tested with Zig version `0.12.0-dev.395+2651363c9`
+Last tested with Zig version `0.12.0-dev.927+895c81ce72`
 
 **Build**
 
@@ -168,12 +169,11 @@ An atom is either a 64-bit floating point number, or a symbol. A symbol is any s
 * Destructive actions have an exclamation point suffix, such as `set!`
 * Sentinels are prefixed with an ampersand, such as `&rest`
 * Symbols with special meaning are prefixed `#`, such as `#t`
-* Identifiers are kebab-case, while composite types and module variables are PascalCase
-* To logically group functions, infix dots are used, such as `io.read-number`
+* Identifiers are kebab-case, while composite types such as modules are PascalCase
 
 ## Intrinsics
 
-Intrinsics are functions, macros, and symbols implemented by the interpreter. They are building blocks for the standard library and user programs.
+Intrinsics are built-in functions, macros, and symbols implemented by the interpreter. They are building blocks for the standard library and user programs.
 
 ### nil
 
@@ -283,6 +283,19 @@ Local variables:
 3 10 2
 ```
 
+### vars
+
+A list can be destructured into variables using `vars`
+
+
+```scheme
+(var stuff '(1 2 3))
+(vars a b c stuff)
+(assert (= a 1))
+(assert (= b 2))
+(assert (= c 3))
+```
+
 ### set! and unset!
 
 Changes the value of an existing binding (values themselves are immutable). The binding is searched from current to root scope.
@@ -378,7 +391,7 @@ Standard library functions such as `<` are implemented in terms of `order`.
 
 ### env and gc
 
-`env` prints the current list of environments in creation order. By default, garbage collection is executed before printing to reduce noise. This can be turned off by passing no-gc, i.e `(env no-gc)`
+`env` prints the content of the current environment.
 
 ```
 > (env)
@@ -391,9 +404,6 @@ Environment for global: Env@10db4b000
     #? = #t, env *Env@0
     nil = nil, env *Env@0
     ...
-
-> (gc)
-Garbage collected 161 items
 ```
 
 The garbage collector runs periodically, though the criteria and extent are intentionally left undefined by this language reference.
@@ -537,6 +547,8 @@ A top-level `(self)` call will return the root environment as an expression:
 ```
 
 As you can see, when an environment is placed in the first position of a list, it changes which environment the following argument is looked up in.
+
+The argument can either be a symbol, or a list which will be interpreted in the context of the new environment.
 
 Use cases of `self` include modules, composite data types, polymorphic behavior, and enabling duck-typed interfaces/protocols.
 
@@ -908,20 +920,21 @@ Exits the process with an optional exit code (default is 0)
 (exit 1)
 ```
 
-### verbose
+### debug-verbose
 
 Toggles the verbosity flag. When on, some details are printed during evaluation, such as `nil` results and quasiquote expansions.
 
-### math.pi and math.e
+### Math pi and e
 
-The values of π and Euler's number respectively. Note that the `math.` prefix is just a naming convention.
+The values of π and Euler's number respectively. The symbol `π` is an alias to `pi` in the Math module.
 
-### math.floor
+### Math floor
 
 Returns the largest integer less than or equal to the argument.
 
 ```scheme
-(floor math.pi)
+(var math (Math))
+(math (floor (math pi)))
 3
 ```
 

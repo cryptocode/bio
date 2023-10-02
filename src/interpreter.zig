@@ -2,13 +2,19 @@ const std = @import("std");
 const ast = @import("ast.zig");
 const intrinsics = @import("intrinsics.zig");
 const gc = @import("boehm.zig");
+const util = @import("util.zig");
 const linereader = @import("linereader.zig");
-const SourceLocation = @import("sourcelocation.zig").SourceLocation;
+const Token = ast.Token;
 const Expr = ast.Expr;
 const ExprType = ast.ExprType;
 const ExprValue = ast.ExprValue;
 const Env = ast.Env;
 const ExprErrors = ast.ExprErrors;
+
+const isFalsy = util.isFalsy;
+const requireExactArgCount = util.requireExactArgCount;
+const requireMinimumArgCount = util.requireMinimumArgCount;
+const requireType = util.requireType;
 
 /// The expression reader and evaluator
 pub const Interpreter = struct {
@@ -16,150 +22,61 @@ pub const Interpreter = struct {
     exit_code: ?u8 = null,
     gensym_seq: u64 = 0,
     verbose: bool = false,
+    /// Reset before every evaluation, and set if an error occurs during the evaluation.
     has_errors: bool = false,
     break_seen: bool = false,
     allocator: std.mem.Allocator,
-    registered_envs: std.ArrayList(*Env) = undefined,
 
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
     pub fn init() !*Interpreter {
-        SourceLocation.initStack();
-
         var allocator = gc.allocator();
         var instance = try allocator.create(Interpreter);
         instance.* = Interpreter{
             .env = try ast.makeEnv(null, "global"),
             .allocator = gc.allocator(),
-            .registered_envs = std.ArrayList(*Env).init(allocator),
         };
-        try instance.registered_envs.append(instance.env);
 
-        try instance.env.put("import", &intrinsics.expr_std_import);
-        try instance.env.put("exit", &intrinsics.expr_std_exit);
-        try instance.env.put("gc", &intrinsics.expr_std_run_gc);
-        try instance.env.put("#f", &intrinsics.expr_atom_false);
-        try instance.env.put("#t", &intrinsics.expr_atom_true);
-        try instance.env.put("#?", &intrinsics.expr_atom_nil);
-        try instance.env.put("#!", &intrinsics.expr_atom_nil);
-        try instance.env.put("&break", &intrinsics.expr_atom_break);
-        try instance.env.put("nil", &intrinsics.expr_atom_nil);
-        try instance.env.put("math.pi", &intrinsics.expr_std_math_pi);
-        try instance.env.put("math.e", &intrinsics.expr_std_math_e);
-        try instance.env.put("math.floor", &intrinsics.expr_std_floor);
-        try instance.env.put("math.round", &intrinsics.expr_std_round);
-        try instance.env.put("math.min", &intrinsics.expr_std_min);
-        try instance.env.put("math.max", &intrinsics.expr_std_max);
-        try instance.env.put("math.pow", &intrinsics.expr_std_pow);
-        try instance.env.put("time.now", &intrinsics.expr_std_time_now);
-        try instance.env.put("number?", &intrinsics.expr_std_is_number);
-        try instance.env.put("symbol?", &intrinsics.expr_std_is_symbol);
-        try instance.env.put("list?", &intrinsics.expr_std_is_list);
-        try instance.env.put("hashmap?", &intrinsics.expr_std_is_hashmap);
-        try instance.env.put("error?", &intrinsics.expr_std_is_err);
-        try instance.env.put("callable?", &intrinsics.expr_std_is_callable);
-        try instance.env.put("opaque?", &intrinsics.expr_std_is_opaque);
-        try instance.env.put("lowercase?", &intrinsics.expr_std_is_lowercase);
-        try instance.env.put("uppercase?", &intrinsics.expr_std_is_uppercase);
-        try instance.env.put("lowercase", &intrinsics.expr_std_lowercase);
-        try instance.env.put("uppercase", &intrinsics.expr_std_uppercase);
-        try instance.env.put("verbose", &intrinsics.expr_std_verbose);
-        try instance.env.put("assert", &intrinsics.expr_std_assert_true);
-        try instance.env.put("gensym", &intrinsics.expr_std_gensym);
-        try instance.env.put("print", &intrinsics.expr_std_print);
-        try instance.env.put("string", &intrinsics.expr_std_string);
-        try instance.env.put("as", &intrinsics.expr_std_as);
-        try instance.env.put("len", &intrinsics.expr_std_len);
-        try instance.env.put("contains?", &intrinsics.expr_std_contains);
-        try instance.env.put("clone", &intrinsics.expr_std_clone);
-        try instance.env.put("env", &intrinsics.expr_std_env);
-        try instance.env.put("self", &intrinsics.expr_std_self);
-        try instance.env.put("parent", &intrinsics.expr_std_parent);
-        try instance.env.put("quote", &intrinsics.expr_std_quote);
-        try instance.env.put("quasiquote", &intrinsics.expr_std_quasi_quote);
-        try instance.env.put("unquote", &intrinsics.expr_std_unquote);
-        try instance.env.put("unquote-splicing", &intrinsics.expr_std_unquote_splicing);
-        try instance.env.put("double-quote", &intrinsics.expr_std_double_quote);
-        try instance.env.put("range", &intrinsics.expr_std_range);
-        try instance.env.put("rotate-left!", &intrinsics.expr_std_rotate_left);
-        try instance.env.put("env.swap!", &intrinsics.expr_std_swap);
-        try instance.env.put("item-at", &intrinsics.expr_std_item_at);
-        try instance.env.put("item-set", &intrinsics.expr_std_item_set);
-        try instance.env.put("item-remove!", &intrinsics.expr_std_item_remove);
-        try instance.env.put("define", &intrinsics.expr_std_define);
-        try instance.env.put("var", &intrinsics.expr_std_define);
-        try instance.env.put("vars", &intrinsics.expr_std_vars);
-        try instance.env.put("lambda", &intrinsics.expr_std_lambda);
-        try instance.env.put("macro", &intrinsics.expr_std_macro);
-        try instance.env.put("λ", &intrinsics.expr_std_lambda);
-        try instance.env.put("apply", &intrinsics.expr_std_apply);
-        try instance.env.put("list", &intrinsics.expr_std_list);
-        try instance.env.put("hashmap.new", &intrinsics.expr_std_map_new);
-        try instance.env.put("hashmap.put", &intrinsics.expr_std_map_put);
-        try instance.env.put("hashmap.get", &intrinsics.expr_std_map_get);
-        try instance.env.put("hashmap.remove", &intrinsics.expr_std_map_remove);
-        try instance.env.put("hashmap.clear", &intrinsics.expr_std_map_clear);
-        try instance.env.put("hashmap.keys", &intrinsics.expr_std_map_keys);
-        try instance.env.put("loop", &intrinsics.expr_std_loop);
-        try instance.env.put("append", &intrinsics.expr_std_append);
-        try instance.env.put("eval", &intrinsics.expr_std_eval);
-        try instance.env.put("eval-string", &intrinsics.expr_std_eval_string);
-        try instance.env.put("string.split", &intrinsics.expr_std_split);
-        try instance.env.put("atom.split", &intrinsics.expr_std_split_atom);
-        try instance.env.put("set!", &intrinsics.expr_std_set);
-        try instance.env.put("unset!", &intrinsics.expr_std_unset);
-        try instance.env.put("try", &intrinsics.expr_std_try);
-        try instance.env.put("error", &intrinsics.expr_std_error);
-        try instance.env.put("and", &intrinsics.expr_std_logical_and);
-        try instance.env.put("or", &intrinsics.expr_std_logical_or);
-        try instance.env.put("not", &intrinsics.expr_std_logical_not);
-        try instance.env.put("+", &intrinsics.expr_std_sum);
-        try instance.env.put("-", &intrinsics.expr_std_sub);
-        try instance.env.put("*", &intrinsics.expr_std_mul);
-        try instance.env.put("/", &intrinsics.expr_std_div);
-        try instance.env.put("=", &intrinsics.expr_std_eq);
-        try instance.env.put("~=", &intrinsics.expr_std_eq_approx);
-        try instance.env.put("^=", &intrinsics.expr_std_eq_reference);
-        try instance.env.put("order", &intrinsics.expr_std_order);
-        try instance.env.put("io.open-file", &intrinsics.expr_std_file_open);
-        try instance.env.put("io.close-file", &intrinsics.expr_std_file_close);
-        try instance.env.put("io.read-line", &intrinsics.expr_std_file_read_line);
-        try instance.env.put("io.write-line", &intrinsics.expr_std_file_write_line);
-        try instance.env.put("io.read-byte", &intrinsics.expr_std_file_read_byte);
+        // Make all built-in functions, symbols and numeric constants available in the root environment
+        try instance.env.populateWithIntrinsics();
 
         return instance;
     }
 
-    pub fn deinit(_: *Interpreter) void {
-        //gc.collect(.aggressive);
-        SourceLocation.deinitStack();
-    }
+    pub fn deinit(_: *Interpreter) void {}
 
     /// Print user friendly errors
     pub fn printError(_: *Interpreter, err: anyerror) !void {
-        const err_str = switch (err) {
-            ExprErrors.AlreadyReported => return,
-            ExprErrors.InvalidArgumentCount => "Invalid argument count",
-            ExprErrors.InvalidArgumentType => "Invalid argument type",
-            ExprErrors.ExpectedNumber => "Expected a number",
-            ExprErrors.ExpectedBool => "Expected a boolean expression",
-            ExprErrors.UnexpectedRightParen => "Unexpected )",
-            ExprErrors.MissingRightParen => "Missing )",
-            ExprErrors.SyntaxError => "Syntax error while parsing",
-            ExprErrors.Eof => "End of file",
-            ExprErrors.BindingNotFound => "Binding not found",
-            else => "Unknown",
-        };
-        try std.io.getStdErr().writer().print("{s}\n", .{err_str});
+        if (err == ExprErrors.AlreadyReported) return;
+        try std.io.getStdErr().writer().print("{s}\n", .{ast.errString(err)});
     }
 
-    /// Print a formatted error message, prefixed with source location
-    pub fn printErrorFmt(self: *Interpreter, src_loc: *SourceLocation, comptime fmt: []const u8, args: anytype) !void {
-        try std.io.getStdErr().writer().print("ERROR: {s}, line {d}: ", .{ src_loc.file, @max(1, src_loc.line) });
-        try std.io.getStdErr().writer().print(fmt, args);
-        // for (SourceLocation.stack.items) |loc| {
-        //     try std.io.getStdOut().writer().print("    {s}:{d}", .{loc.file, std.math.max(1, loc.line)});
-        // }
+    /// Print a formatted runtime error message, including source information.
+    pub fn printErrorFmt(self: *Interpreter, expr: *Expr, comptime fmt: []const u8, args: anytype) !void {
+        var stdout = std.io.getStdErr().writer();
+        if (expr.tok) |tok| {
+            const file = if (tok.file.path) |path| path else "eval";
+            const info = ast.SourceInfo.compute(tok);
+            try stdout.print("\x1b[1m{s}:{d}:{d}: error: ", .{ file, info.line + 1, info.column + 1 });
+            try stdout.print(fmt, args);
+
+            // var line = try gc.allocator().dupe(u8, info.source_line);
+            const content = tok.file.content;
+            if (info.line_start <= tok.start and tok.end <= info.line_end) {
+                const indentation = "    ";
+                try stdout.print("\n", .{});
+                try stdout.print("\x1b[0m\n{s}", .{indentation});
+                try stdout.print("{s}", .{content[info.line_start..tok.start]});
+                try stdout.print("\x1b[92;4m{s}\x1b[0m", .{content[tok.start..tok.end]});
+                try stdout.print("{s}\n", .{content[tok.end..info.line_end]});
+                // Print ^----- indicator
+                const caret_offset = tok.start - info.line_start;
+                var filler = try gc.allocator().alloc(u8, caret_offset);
+                @memset(filler, ' ');
+                try stdout.print("\x1b[92m{s}{s}✗~~~\x1b[0m", .{ indentation, filler });
+            }
+        } else try stdout.print(fmt, args);
+        try stdout.print("\n", .{});
         self.has_errors = true;
     }
 
@@ -173,11 +90,11 @@ pub const Interpreter = struct {
 
         tailcall_optimization_loop: while (maybe_next) |e| {
             if (self.exit_code) |_| {
-                return &intrinsics.expr_atom_nil;
+                return ast.getIntrinsic(.nil);
             }
-            if (e == &intrinsics.expr_atom_break) {
+            if (e.isIntrinsic(.@"&break")) {
                 self.break_seen = true;
-                return &intrinsics.expr_atom_nil;
+                return ast.getIntrinsic(.nil);
             }
             switch (e.val) {
                 ExprValue.num, ExprValue.env, ExprValue.any => {
@@ -187,34 +104,34 @@ pub const Interpreter = struct {
                     if (env.lookup(sym, true)) |val| {
                         return val;
                     } else {
-                        try self.printErrorFmt(&e.src, "{s} is not defined\n", .{sym});
-                        return &intrinsics.expr_atom_nil;
+                        try self.printErrorFmt(e, "{s} is not defined", .{sym});
+                        return ast.getIntrinsic(.nil);
                     }
                 },
                 ExprValue.lst => |list| {
                     if (list.items.len == 0) {
-                        return &intrinsics.expr_atom_nil;
+                        return ast.getIntrinsic(.nil);
                     }
 
                     const args_slice = list.items[1..];
-                    if (list.items[0] == &intrinsics.expr_atom_macroexpand) {
+                    if (list.items[0].isIntrinsic(.macroexpand)) {
                         // Signal that we don't want to evaluate the expression returned by the macro
                         seen_macro_expand = true;
                         maybe_next = args_slice[args_slice.len - 1];
                         continue;
-                    } else if (list.items[0] == &intrinsics.expr_atom_begin) {
-                        var res: *Expr = &intrinsics.expr_atom_nil;
+                    } else if (list.items[0].isIntrinsic(.begin)) {
+                        var res: *Expr = ast.getIntrinsic(.nil);
                         for (args_slice[0 .. args_slice.len - 1]) |arg| {
                             res = try self.eval(env, arg);
                         }
                         maybe_next = args_slice[args_slice.len - 1];
                         continue;
-                    } else if (list.items[0] == &intrinsics.expr_atom_cond) {
-                        try intrinsics.requireMinimumArgCount(2, args_slice);
+                    } else if (list.items[0].isIntrinsic(.cond)) {
+                        try requireMinimumArgCount(2, args_slice);
 
                         const else_branch = args_slice[args_slice.len - 1];
                         if (else_branch.val != ExprType.lst or else_branch.val.lst.items.len != 1) {
-                            try self.printErrorFmt(&e.src, "Last expression in cond must be a single-expression list\n", .{});
+                            try self.printErrorFmt(e, "Last expression in cond must be a single-expression list", .{});
                             return ExprErrors.AlreadyReported;
                         }
 
@@ -223,27 +140,27 @@ pub const Interpreter = struct {
                                 maybe_next = branch.val.lst.items[0];
                                 continue :tailcall_optimization_loop;
                             } else if (branch.val == ExprType.lst) {
-                                try intrinsics.requireExactArgCount(2, branch.val.lst.items);
+                                try requireExactArgCount(2, branch.val.lst.items);
 
                                 const predicate = try self.eval(env, branch.val.lst.items[0]);
-                                if (predicate == &intrinsics.expr_atom_true) {
+                                if (predicate.isIntrinsic(.@"#t")) {
                                     maybe_next = branch.val.lst.items[1];
                                     continue :tailcall_optimization_loop;
                                 }
                             } else {
-                                try self.printErrorFmt(&e.src, "Invalid switch syntax\n", .{});
+                                try self.printErrorFmt(e, "Invalid switch syntax", .{});
                                 return ExprErrors.AlreadyReported;
                             }
                         }
-                        return &intrinsics.expr_atom_nil;
-                    } else if (list.items[0] == &intrinsics.expr_atom_if) {
-                        try intrinsics.requireMinimumArgCount(2, args_slice);
+                        return ast.getIntrinsic(.nil);
+                    } else if (list.items[0].isIntrinsic(.@"if")) {
+                        try requireMinimumArgCount(2, args_slice);
 
                         var branch: usize = 1;
                         const predicate = try self.eval(env, args_slice[0]);
-                        if (predicate != &intrinsics.expr_atom_true) {
+                        if (!predicate.isIntrinsic(.@"#t")) {
                             // Anything not defined as falsy is considered true in a boolean context
-                            if (intrinsics.isFalsy(predicate)) {
+                            if (isFalsy(predicate)) {
                                 branch += 1;
                             }
                         }
@@ -252,15 +169,15 @@ pub const Interpreter = struct {
                             maybe_next = args_slice[branch];
                             continue :tailcall_optimization_loop;
                         } else {
-                            return &intrinsics.expr_atom_nil;
+                            return ast.getIntrinsic(.nil);
                         }
                     }
 
-                    // Look up std function, lambda, macro or env. If not found, the lookup has already reported the error.
+                    // Look up intrinsic, lambda, macro or env by name. If not found, the lookup has already reported the error.
                     var func = try self.eval(if (func_lookup_env) |fle| fle else env, list.items[0]);
                     func_lookup_env = null;
-                    if (func == &intrinsics.expr_atom_nil) {
-                        return &intrinsics.expr_atom_nil;
+                    if (func.isIntrinsic(.nil)) {
+                        return ast.getIntrinsic(.nil);
                     }
 
                     const kind = func.val;
@@ -268,12 +185,12 @@ pub const Interpreter = struct {
                         // Look up a symbol or call a function in the given environment
                         ExprValue.env => |target_env| {
                             if (args_slice.len == 0 or (args_slice[0].val != ExprType.sym and args_slice[0].val != ExprType.lst)) {
-                                try self.printErrorFmt(&e.src, "Missing symbol or call in environment lookup: ", .{});
-                                if (args_slice.len > 0) {
-                                    try args_slice[0].print();
-                                } else {
-                                    try self.printErrorFmt(&e.src, "[no argument]\n", .{});
-                                }
+                                var arg_str = if (args_slice.len > 0)
+                                    try args_slice[0].toStringAlloc()
+                                else
+                                    "[no argument]";
+
+                                try self.printErrorFmt(e, "Missing symbol or call in environment lookup: {s}", .{arg_str});
                                 return ExprErrors.AlreadyReported;
                             }
 
@@ -284,7 +201,7 @@ pub const Interpreter = struct {
                             } else if (target_env.lookup(args_slice[0].val.sym, false)) |match| {
                                 return match;
                             } else {
-                                try self.printErrorFmt(&e.src, "Symbol not found in given environment: {s}\n", .{args_slice[0].val.sym});
+                                try self.printErrorFmt(e, "Symbol not found in given environment: {s}", .{args_slice[0].val.sym});
                                 return ExprErrors.AlreadyReported;
                             }
                         },
@@ -292,20 +209,18 @@ pub const Interpreter = struct {
                         // Evaluate an intrinsic function
                         ExprValue.fun => |fun| {
                             return fun(self, env, args_slice) catch |err| {
-                                try self.printErrorFmt(&e.src, "", .{});
-                                try self.printError(err);
-                                return &intrinsics.expr_atom_nil;
+                                try self.printErrorFmt(e, "{s}", .{ast.errString(err)});
+                                return ast.getIntrinsic(.nil);
                             };
                         },
 
                         // Evaluate a previously defined lambda or macro
                         ExprValue.lam, ExprValue.mac => |fun| {
-                            try intrinsics.requireType(self, fun.items[0], ExprType.lst);
+                            try requireType(self, fun.items[0], ExprType.lst);
                             const parent_env = if (kind == ExprType.lam) func.env else env;
                             const kind_str = if (kind == ExprType.lam) "lambda" else "macro";
 
                             var local_env = try ast.makeEnv(parent_env, kind_str);
-                            try self.registered_envs.append(local_env);
                             var formals = fun.items[0].val.lst.items;
                             var formal_param_count = formals.len;
                             var logical_arg_count = args_slice.len;
@@ -314,7 +229,7 @@ pub const Interpreter = struct {
                             // Bind arguments to the new environment
                             for (formals, 0..) |param, index| {
                                 if (param.val == ExprType.sym) {
-                                    if (param == &intrinsics.expr_atom_rest) {
+                                    if (param.isIntrinsic(.@"&rest")) {
                                         formal_param_count -= 1;
                                         var rest_args = try ast.makeListExpr(null);
                                         for (args_slice[index..]) |rest_param| {
@@ -331,7 +246,7 @@ pub const Interpreter = struct {
                                         break;
                                     }
 
-                                    if (param == &intrinsics.expr_atom_eval) {
+                                    if (param.isIntrinsic(.@"&eval")) {
                                         eval_formal_count += 1;
                                         formal_param_count -= 1;
                                         continue;
@@ -347,26 +262,24 @@ pub const Interpreter = struct {
                                         }
                                     }
                                 } else {
-                                    try self.printErrorFmt(&e.src, "Formal parameter to {s} is not a symbol: ", .{kind_str});
-                                    try param.print();
+                                    try self.printErrorFmt(e, "Formal parameter to {s} is not a symbol: {s}", .{ kind_str, try param.toStringAlloc() });
                                 }
                             }
 
                             if (logical_arg_count != formal_param_count) {
-                                try self.printErrorFmt(&e.src, "{s} received {d} arguments, expected {d}\n", .{ kind_str, args_slice.len, formal_param_count });
-                                return &intrinsics.expr_atom_nil;
+                                try self.printErrorFmt(e, "{s} received {d} arguments, expected {d}", .{ kind_str, args_slice.len, formal_param_count });
+                                return ast.getIntrinsic(.nil);
                             }
 
                             // Evaluate body, except the last expression which is TCO'ed
                             var result: *Expr = undefined;
                             for (fun.items[1 .. fun.items.len - 1]) |body_expr| {
                                 result = self.eval(local_env, body_expr) catch |err| {
-                                    try self.printErrorFmt(&body_expr.src, "Could not evaluate {s} body:", .{kind_str});
-                                    try self.printError(err);
-                                    return &intrinsics.expr_atom_nil;
+                                    try self.printErrorFmt(body_expr, "{s}: Could not evaluate {s} body", .{ ast.errString(err), kind_str });
+                                    return ast.getIntrinsic(.nil);
                                 };
                                 if (self.has_errors) {
-                                    return &intrinsics.expr_atom_nil;
+                                    return ast.getIntrinsic(.nil);
                                 }
                             }
 
@@ -380,9 +293,8 @@ pub const Interpreter = struct {
                                 continue;
                             } else {
                                 result = self.eval(local_env, last_expr) catch |err| {
-                                    try self.printErrorFmt(&last_expr.src, "Could not evaluate {s} body:", .{kind_str});
-                                    try self.printError(err);
-                                    return &intrinsics.expr_atom_nil;
+                                    try self.printErrorFmt(last_expr, "{s}: Could not evaluate {s} body", .{ ast.errString(err), kind_str });
+                                    return ast.getIntrinsic(.nil);
                                 };
 
                                 if (seen_macro_expand) {
@@ -395,279 +307,85 @@ pub const Interpreter = struct {
                             }
                         },
                         else => {
-                            try self.printErrorFmt(&e.src, "Not a function or macro: ", .{});
-                            try list.items[0].print();
-                            return &intrinsics.expr_atom_nil;
+                            try self.printErrorFmt(e, "Not a function or macro: {s}", .{try list.items[0].toStringAlloc()});
+                            return ast.getIntrinsic(.nil);
                         },
                     }
-                    return &intrinsics.expr_atom_nil;
+                    return ast.getIntrinsic(.nil);
                 },
                 // This allows us to create intrinsics that pass intrinsics as arguments
                 ExprValue.fun => {
                     return e;
                 },
                 else => {
-                    try self.printErrorFmt(&e.src, "Invalid expression: {}\n", .{e});
-                    return &intrinsics.expr_atom_nil;
+                    try self.printErrorFmt(e, "Invalid expression", .{});
+                    return ast.getIntrinsic(.nil);
                 },
             }
         }
-        return &intrinsics.expr_atom_nil;
+        return ast.getIntrinsic(.nil);
     }
 
-    /// Run GC if needed, then parse and evaluate the expression
-    pub fn parseAndEvalExpression(self: *Interpreter, line: []const u8) anyerror!?*Expr {
-        var input = std.mem.trimRight(u8, line, "\r\n");
-
-        // Ignore empty lines and comments
-        if (input.len == 0 or input[0] == ';') {
-            return null;
-        }
-        var expr = try self.parse(input);
-        return try self.eval(self.env, expr);
-    }
-
-    /// Parse Bio source code into Expr objects
-    pub fn parse(self: *Interpreter, input: []const u8) !*Expr {
-        var it = Lisperator{
-            .index = 0,
-            .buffer = input,
-        };
-        return self.parseRecursively(&it);
-    }
-
-    /// Recursively parse expressions
-    fn parseRecursively(self: *Interpreter, it: *Lisperator) anyerror!*Expr {
-        if (it.next()) |val| {
-            if (val.len > 0) {
-                switch (val[0]) {
-                    '(' => {
-                        var list = try ast.makeListExpr(null);
-
-                        while (it.peek()) |peek| {
-                            if (peek.len == 0) {
-                                return ExprErrors.SyntaxError;
-                            }
-                            if (peek[0] != ')') {
-                                try list.val.lst.append(try self.parseRecursively(it));
-                            } else {
-                                break;
-                            }
-                        }
-                        _ = it.next();
-                        return list;
-                    },
-                    ')' => {
-                        return ExprErrors.UnexpectedRightParen;
-                    },
-                    ',' => {
-                        var unquote_op = &intrinsics.expr_atom_unquote;
-                        var index_adjust: usize = 1;
-
-                        // The Lisperator has no understanding of the , and ,@ prefixes, so we adjust it manually
-                        // For instance, if the current token is ,@abc then the next token will be abc
-                        if (val.len > 1 and val[1] == '@') {
-                            unquote_op = &intrinsics.expr_atom_unquote_splicing;
-                            index_adjust += 1;
-                        }
-
-                        if (index_adjust > 0) {
-                            it.index = it.prev_index + index_adjust;
-                        }
-
-                        return try ast.makeListExpr(&.{ unquote_op, try self.parseRecursively(it) });
-                    },
-                    '\'' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try self.parseRecursively(it) });
-                    },
-                    '`' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quasi_quote, try self.parseRecursively(it) });
-                    },
-                    '"' => {
-                        return try ast.makeListExpr(&.{ &intrinsics.expr_atom_quote, try ast.makeAtomByDuplicating(val[1..val.len]) });
-                    },
-                    else => {
-                        return ast.makeAtomByDuplicating(val);
-                    },
-                }
-            } else {
-                return ExprErrors.SyntaxError;
-            }
-        } else {
-            return ExprErrors.Eof;
-        }
-    }
-
-    /// This function helps us parse a Bio expression that may span multiple lines
-    /// If too many )'s are detected, an error is returned. We make sure to not
-    /// count parenthesis inside string literals.
-    /// This is used by the REPL, and during file import parsing.
-    pub fn readBalancedExpr(self: *Interpreter, reader: anytype, prompt: []const u8) anyerror!?[]u8 {
-        var balance: isize = 0;
-        var expr = std.ArrayList(u8).init(gc.allocator());
-        defer expr.deinit();
-        var expr_writer = expr.writer();
-
-        try linereader.linenoise_wrapper.printPrompt(prompt);
-        reader_loop: while (true) {
-            if (reader.readUntilDelimiterOrEofAlloc(gc.allocator(), '\n', 2048)) |maybe| {
-                if (maybe) |line| {
-                    SourceLocation.current().line += 1;
-
-                    var only_seen_ws = true;
-                    var inside_string = false;
-                    for (line) |char| {
-                        if (char == ']') {
-                            std.process.exit(1);
-                        }
-                        if (char == ';' and only_seen_ws) {
-                            continue :reader_loop;
-                        }
-                        only_seen_ws = only_seen_ws and std.ascii.isWhitespace(char);
-
-                        if (char == '"') {
-                            inside_string = !inside_string;
-                        }
-
-                        if (!inside_string) {
-                            if (char == '(') {
-                                balance += 1;
-                            } else if (char == ')') {
-                                balance -= 1;
-                            }
-                        }
-                    }
-
-                    if (expr.items.len > 0) {
-                        try expr_writer.writeAll(" ");
-                    }
-
-                    try expr_writer.writeAll(line);
-                } else {
-                    if (balance > 0 and prompt.len == 0) {
-                        return ExprErrors.MissingRightParen;
-                    }
-                    return null;
-                }
-            } else |err| {
-                try self.printErrorFmt(SourceLocation.current(), "readUntilDelimiterOrEofAlloc failed {}\n", .{err});
-            }
-
-            if (balance <= 0) {
-                break;
-            } else {
-                linereader.linenoise_wrapper.hidePrompt();
-            }
-        }
-
-        if (balance < 0) {
-            std.debug.print("Missing )\n", .{});
-            return ExprErrors.MissingRightParen;
-        }
-
-        return try expr.toOwnedSlice();
-    }
-
-    /// REPL
+    // REPL
     pub fn readEvalPrint(self: *Interpreter) !void {
         const logo =
             \\
-            \\       ..           ..
-            \\     pd   '(Ob.      `bq
-            \\    6P        M        YA             Bio is a Lisp written in Zig
-            \\   6M'        db       `Mb         Docs at github.com/cryptocode/bio
-            \\   MN        BIO.       8M
-            \\   MN       AM'`M       8M           Use arrow up/down for history
-            \\   YM.     ,M'  db     ,M9          You can also run bio files with
-            \\    Mb    JM'    Yb./ .dM                   "bio run <file>"
-            \\     Yq .            .pY
-            \\        ``          ''
+            \\       ..          ..
+            \\     λλ   '(λλ.     `λλ
+            \\    λλ        λ       λλ             Bio is a Lisp written in Zig
+            \\   λλ'        λλ      `λλ         Docs at github.com/cryptocode/bio
+            \\   λλ        BIO!      λλ
+            \\   λλ       λλ'`λ      λλ           Use arrow up/down for history
+            \\   λλ.     ,λ'  λλ    ,λλ          You can also run bio files with
+            \\    λλ    λλ'    λλ) .λλ                   "bio run <file>"
+            \\     λλ .           .λλ
+            \\        ``         ''
         ;
 
         try std.io.getStdOut().writer().print("{s}\n\n", .{logo});
-        while (true) {
-            if (self.readBalancedExpr(&linereader.linenoise_reader, "bio> ")) |maybe| {
-                if (maybe) |input| {
-                    _ = try linereader.linenoise_wrapper.addToHistory(input);
-                    var maybeResult = self.parseAndEvalExpression(input) catch |err| {
-                        try self.printErrorFmt(SourceLocation.current(), "read-eval failed: \n", .{});
-                        try self.printError(err);
-                        continue;
-                    };
+        var buf = std.ArrayList(u8).init(gc.allocator());
 
-                    if (maybeResult) |res| {
-                        // Update the last expression and print it
-                        try self.env.put("#?", res);
-                        if (res != &intrinsics.expr_atom_nil or self.verbose) {
-                            try res.print();
-                        }
-                        try std.io.getStdOut().writer().print("\n\n", .{});
-                    }
+        main_loop: while (true) {
+            buf.clearRetainingCapacity();
+            var file = ast.File{ .content = "" };
+            var parser = ast.Parser.init(&file);
+            try linereader.linenoise_wrapper.printPrompt("bio: ");
 
-                    if (self.exit_code) |exit_code| {
-                        self.deinit();
-                        std.process.exit(exit_code);
-                    }
+            while (true) {
+                // We're not actually seeing \n, instead linenoise hands us an EOF error, which we ignore
+                linereader.linenoise_reader.streamUntilDelimiter(buf.writer(), '\n', null) catch {};
+
+                parser.updateSource(buf.items);
+                parser.parse() catch |err| {
+                    try self.printError(err);
+                    continue :main_loop;
+                };
+
+                if (parser.missingRightParen()) {
+                    try linereader.linenoise_wrapper.printPrompt("     ");
+                } else break;
+            }
+
+            _ = try linereader.linenoise_wrapper.addToHistory(buf.items);
+
+            for (parser.cur.val.lst.items) |expr| {
+                var res = self.eval(self.env, expr) catch |err| {
+                    try self.printError(err);
+                    break;
+                };
+                // Update the last expression and print it
+                try self.env.put("#?", res);
+                if (!res.isNil() or self.verbose) {
+                    try res.print();
                 }
-            } else |err| {
-                try self.printError(err);
+                try std.io.getStdOut().writer().print("\n", .{});
+
+                if (self.exit_code) |exit_code| {
+                    self.deinit();
+                    std.process.exit(exit_code);
+                }
             }
         }
-    }
-};
-
-/// A tokenizing iterator for Lisp expression
-pub const Lisperator = struct {
-    buffer: []const u8,
-    index: usize = 0,
-    prev_index: usize = 0,
-
-    pub fn peek(self: *Lisperator) ?[]const u8 {
-        const index_now = self.index;
-        const val = self.next();
-        self.index = index_now;
-        return val;
-    }
-
-    /// Returns a slice of the next token, or null if tokenizing is complete
-    pub fn next(self: *Lisperator) ?[]const u8 {
-        if (self.index >= self.buffer.len) {
-            return null;
-        }
-
-        while (self.index + 1 < self.buffer.len and (self.buffer[self.index] == ' ' or self.buffer[self.index] == '\t')) {
-            self.index += 1;
-        }
-
-        var start = self.index;
-        self.prev_index = start;
-
-        if (self.buffer[self.index] == '"') {
-            while (self.index + 1 < self.buffer.len and (self.buffer[self.index + 1] != '"')) {
-                self.index += 1;
-            }
-            if (self.index + 1 == self.buffer.len or self.buffer[self.index + 1] != '"') {
-                std.io.getStdOut().writer().print("Unterminated string literal\n", .{}) catch unreachable;
-                return null;
-            }
-            self.index += 1;
-            defer self.index += 1;
-            return self.buffer[start..self.index];
-        }
-
-        if (self.buffer[self.index] == '(' or self.buffer[self.index] == ')' or self.buffer[self.index] == '\'' or self.buffer[self.index] == '`') {
-            self.index += 1;
-            return self.buffer[start .. start + 1];
-        } else {
-            if (std.mem.indexOfAnyPos(u8, self.buffer, start, " \t)(")) |delim_start| {
-                const res = self.buffer[start..delim_start];
-                self.index = delim_start;
-                return std.mem.trim(u8, res, "\r\n\t ");
-            } else if (self.index <= self.buffer.len) {
-                return std.mem.trim(u8, self.buffer[start..self.buffer.len], "\r\n\t ");
-            } else {
-                return null;
-            }
-        }
+        try std.io.getStdOut().writer().print("Got {s}\n", .{buf.items});
     }
 };

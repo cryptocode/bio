@@ -58,4 +58,17 @@ pub fn build(b: *std.build.Builder) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    var tests = b.addTest(.{
+        .root_source_file = .{ .path = "src/tests.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    tests.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
+    tests.linkLibC();
+    tests.linkLibrary(gc);
+
+    const run_tests = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Run tests");
+    test_step.dependOn(&run_tests.step);
 }

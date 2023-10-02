@@ -1,32 +1,40 @@
 ; ---------------------------------------
 ;        The Bio standard library
 ; ---------------------------------------
+(set! #! nil)
+(set! #value nil)
+
+; Alias var to define
+(define var define)
+
+(var λ lambda)
 
 ; First item of a list. Note that calling range without arguments returns
 ; the first item of a list, or nil if the list is empty.
-(var car (lambda (list) (range list)))
+(var car (lambda (lst) (range lst)))
+(var first car)
+
+; Negative range indices means "from the end"
+(var last (lambda (lst) (car (range lst (- 1)))))
 
 ; If range gets only one argument, the returned list goes to the end
-(var cdr (lambda (list) (range list 1)))
-(var caar (lambda (list) (car (car list))))
+(var cdr (lambda (lst) (range lst 1)))
+(var rest cdr)
+(var caar (lambda (lst) (car (car lst))))
 (var cadr (lambda (x) (car (cdr x))))
 (var cddr (lambda (x) (cdr (cdr x))))
 (var caddr (lambda (x) (car (cddr x))))
 
-(var nth-orelse (lambda (index list default)
-    (var item (item-at index list))
+(var nth-orelse (lambda (index lst default)
+    (var item (item-at index lst))
     (if item item default)))
 
 ; The n'th item in a list, or nil if out of bounds
-(var nth (lambda (index list)
-    (item-at index list)))
+(var nth (lambda (index lst)
+    (item-at index lst)))
 
-(var first (lambda (list) (car list)))
-
-; Negative range indices means "from the end"
-(var last (lambda (list) (car (range list (- 1)))))
-(var pop-last! (lambda (list) (item-remove! (- (len list) 1) list)))
-(var pop-first! (lambda (list) (item-remove! 0 list)))
+(var pop-last! (lambda (lst) (item-remove! (- (len lst) 1) lst)))
+(var pop-first! (lambda (lst) (item-remove! 0 lst)))
 
 ; Prepend item to list
 ;     (cons 'a '(b c))     -> '(a b c)
@@ -34,72 +42,71 @@
 (var cons (lambda (new existing-list) (append (list new) existing-list)))
 
 ; In-place append an item to a list
-(var item-append! (λ (list item)
-    (item-set (len list) list item)))
+(var item-append! (λ (lst item)
+    (item-set (len lst) lst item)))
 
 ; Interpret a list as digits in a binary number, convert to number. Any non-zero
 ; list item is interpreted as 1 so '(12 0 1 0 0 23) is 1 0 1 0 0 1 = 41
-(var bitset-to-number (lambda (list)
+(var bitset-to-number (lambda (lst)
     (var res 0)
-    (n-times-with (len list) (lambda (n)
+    (n-times-with (len lst) (lambda (n)
         (var index (- 0 (+ n 1)))
-        (var item (range list index))
-        (if (> (car item) 0) (+= res (math.pow 2 n)))
+        (var item (range lst index))
+        (if (> (car item) 0) (+= res (std-math-pow 2 n)))
     ))
     res))
 
 ; In-place reverse a list; returns the list
-(var reverse! (λ (list)
-    (var length (len list))
-    (var end (math.floor (/ length 2)))
+(var reverse! (λ (lst)
+    (var length (len lst))
+    (var end (std-math-floor (/ length 2)))
     (loop 'i '(0 end)
-        (var tmp (item-at i list))
-        (item-set i list (item-at (- length i 1) list))
-        (item-set (- length i 1) list tmp)
+        (var tmp (item-at i lst))
+        (item-set i lst (item-at (- length i 1) lst))
+        (item-set (- length i 1) lst tmp)
     )
-    list))
+    lst))
 
 ; Creates a list containing `value`, `count` times
 ; (listof 10 3) => '(10 10 10)
 (var listof (λ (value count)
-    (var list '())
-    (loop 'idx '(0 count) (item-set idx list value))
-    list))
+    (var lst '())
+    (loop 'idx '(0 count) (item-set idx lst value))
+    lst))
 
 ; Returns the index of the item, or nil if it doesn't exist
-(var indexof (λ (list item)
+(var indexof (λ (lst item)
     (var res nil)
-    (loop 'idx '(0 (len list))
-        (if (= (item-at idx list) item) (begin (set! res idx) &break))    )
+    (loop 'idx '(0 (len lst))
+        (if (= (item-at idx lst) item) (begin (set! res idx) &break))    )
     res))
 
 ; In-place replacement of first match in a list
-(var replace-first! (λ (list item replacement)
-    (var idx (indexof list item))
-    (if idx (item-set idx list replacement))
-    list))
+(var replace-first! (λ (lst item replacement)
+    (var idx (indexof lst item))
+    (if idx (item-set idx lst replacement))
+    lst))
 
 ; In-place replacement of all matches in a list
-(var replace-all! (λ (list item replacement)
+(var replace-all! (λ (lst item replacement)
     (var idx)
     (loop '()
-        (set! idx (indexof list item))
-        (if idx (item-set idx list replacement) &break)
+        (set! idx (indexof lst item))
+        (if idx (item-set idx lst replacement) &break)
     )
-    list))
+    lst))
 
 ; Update an item in-place by applying the given operation and operand
 ; (item-apply! idx list + 5)
-(var item-apply! (λ (index list op operand)
+(var item-apply! (λ (index lst op operand)
     (item-set
         index
-        list
-        (op (item-at index list) operand))))
+        lst
+        (op (item-at index lst) operand))))
 
 ; Copy a list
 (var copy-list (λ (original-list)
-    (eval `(list ,@original-list))
-))
+    (eval `(list ,@original-list))))
 
 (var nil? (lambda (x) (= nil x)))
 (var atom? (lambda (x) (if (or (number? x) (symbol? x)) #t #f)))
@@ -124,14 +131,12 @@
 ;          (double 100)
 ;          200
 (var fun (macro (/name /args &rest /body)
-    `(var ,/name (lambda (,@/args) ,@/body)
-)))
+    `(var ,/name (lambda (,@/args) ,@/body))))
 
 ; A type is just a function that return its own environment. This is syntax sugar
 ; for (fun MyType () ... (self)), or the equivalent lambda expression.
 (var type (macro (/name /args &rest /body)
-    `(var ,/name (lambda (,@/args) ,@/body (self))
-)))
+    `(var ,/name (lambda (,@/args) ,@/body (self)))))
 
 ; The let macro, which makes a new scope with an arbitrary number of local bindings
 ; The transformation goes like this:
@@ -200,22 +205,19 @@
     (loop (list 0 times)
         (fn count)
         (+= count 1)
-    )
-))
+    )))
 
 ; Replaces an item in a list at a given index, returning a new list.
 ; If the index is past the end of the list, a new item is appended.
-(var replace-or-append (λ (list index value)
-    (item-set index list value)
-    list
-))
+(var replace-or-append (λ (lst index value)
+    (item-set index lst value)
+    lst))
 
 ; Calls `op` on every item in `list`, but only after applying the function `lm` to the item
-(var reduce-with (λ (initial lm op list)
+(var reduce-with (λ (initial lm op lst)
     (var reduction initial)
-    (list.iterate list (λ (x) (set! reduction (op reduction (lm x)))))
-    reduction
-))
+    (list.iterate lst (λ (x) (set! reduction (op reduction (lm x)))))
+    reduction))
 
 ; Multidimensional list access
 ; (var M '( ( (10 11 12) (13 14 15) ) ( (16 17 18) (19 20 21) ) ) )
@@ -262,39 +264,39 @@
     )
 ))
 
-; (hashmap.iterate mymap (λ (key value) ... ))
-(var hashmap.iterate (lambda (hashmap fn)
-    (var keys (hashmap.keys hashmap))
-    (var key)
+; (std-hashmap-iterate mymap (λ (key value) ... ))
+(var std-hashmap-iterate (lambda (hashmap fn)
+    (var keys (std-hashmap-keys hashmap))
+    (var key '())
     (loop 'index (list 0 (len keys))
         (set! key (item-at index keys))
-        (fn key (hashmap.get hashmap key))
+        (fn key (std-hashmap-get hashmap key))
     )
 ))
 
 ; For hashmaps with list values, this can be used to easily inplace-add an item
 ; to that list, given a key. The list is created if necessary.
-(var hashmap.append! (λ (hashmap k v)
-    (var cur (hashmap.get hashmap k))
-    (if cur (item-append! cur v) (hashmap.put hashmap k (list v)))
+(var std-hashmap-append! (λ (hashmap k v)
+    (var cur (std-hashmap-get hashmap k))
+    (if cur (item-append! cur v) (std-hashmap-put hashmap k (list v)))
 ))
 
-; Same as (hashmap.put ...), except that a function is called if the item already exists
+; Same as (std-hashmap-put ...), except that a function is called if the item already exists
 ; rather than replacing the value. The function receives the value reference.
-(var hashmap.put-or-apply (λ (hashmap key value fn)
-    (var existing (hashmap.get hashmap key))
+(var std-hashmap-put-or-apply (λ (hashmap key value fn)
+    (var existing (std-hashmap-get hashmap key))
     (if existing
         (fn existing)
-        (hashmap.put hashmap key value)
+        (std-hashmap-put hashmap key value)
     )
 ))
 
-; Similar to (hashmap.put), but does not replace the value if the key exists
-(var hashmap.maybe-put (λ (hashmap key value)
-    (var existing (hashmap.get hashmap key))
+; Similar to (std-hashmap-put), but does not replace the value if the key exists
+(var std-hashmap-maybe-put (λ (hashmap key value)
+    (var existing (std-hashmap-get hashmap key))
     (if existing
         existing
-        (begin (hashmap.put hashmap key value) value)
+        (begin (std-hashmap-put hashmap key value) value)
     )
 ))
 
@@ -418,7 +420,7 @@
 ; Returns the middle item of a list, or nil if the list is empty
 (var math.middle-item (λ (list)
     (if (> (len list) 0)
-        (item-at (math.floor (/ (len list) 2)) list)
+        (item-at (std-math-floor (/ (len list) 2)) list)
         nil
     )
 ))
@@ -427,7 +429,7 @@
 (fun math.between (val start-inclusive end-inclusive)
     (and (>= val start-inclusive) (<= val end-inclusive)))
 
-(var math.mod (lambda (num div) (- num (* div (math.floor (/ num div))))))
+(var math.mod (lambda (num div) (- num (* div (std-math-floor (/ num div))))))
 
 ; Division that emits an error for zero denominators
 (var math.safe-div (lambda (x y)
@@ -465,8 +467,7 @@
             guess
             (solve (improve guess)))))
 
-    (solve 1.0)
-))
+    (solve 1.0)))
 
 (var math.odd? (lambda (x) (!= 0 (math.mod x 2))))
 (var math.even? (lambda (x) (= 0 (math.mod x 2))))
@@ -476,36 +477,18 @@
     (cond
         ((= n 0) 0)
         ((= n 1) 1)
-        ((+ (math.fib (- n 1)) (math.fib (- n 2))))
-    )
-))
+        ((+ (math.fib (- n 1)) (math.fib (- n 2)))))))
 
 ; Compute n!
 (var math.fact (lambda (n)
     (if (= n 0)
         1
-        (* n (math.fact (- n 1)))
-    )
-))
+        (* n (math.fact (- n 1))))))
 
-; Returns a linear congruent RNG, using the BSD libc formula
-(var math.make-random-generator  (lambda (seed)
-    (λ ()
-        (set! seed (math.mod (+ (* 1103515245 seed) 12345) 2147483648)
-        )
-        seed
-    )
-))
-
-; Given an RNG generator, generate a list of n random numbers
-(var math.random-list (lambda (generator n) (if (= 0  n) '() (cons (generator) (math.random-list generator (- n 1))))))
 
 ; The Y combinator and a version of factorial using it
 (var Y (lambda (f) ((lambda (g) (g g)) (lambda (g) (f (lambda (a) ((g g) a)))))))
 (var math.fact-y (Y (lambda (r) (lambda (x) (if (< x 2) 1 (* x (r (- x 1))))))))
-
-; π alias
-(var π math.pi)
 
 ; Note that bits = 64 will cause rounding errors, since Bio internally use 64 bit floating point for numbers
 (fun math.max-int (bits)
@@ -527,11 +510,80 @@
         ((callable? x) "function")
         ((opaque? x) "opaque")
         ("unknown")
-    )
-))
+    )))
 
-(var module-name "Bio Standard Library")
+; Alias to (exit <exit code>)
+(var quit exit)
+
+; (fun quit (&rest exit-code) 
+;     (if (not (nil? exit-code))
+;         (exit (car exit-code))
+;         (exit)))
+
+; A collection of string utilities
+(type String ()
+    (define lowercase? std-string-lowercase?)
+    (define uppercase? std-string-uppercase?)
+    (define lowercase std-string-lowercase)
+    (define uppercase std-string-uppercase))
+
+; A collection of sequence/list utilities.
+(type Sequence ()
+    ; Zip two lists together. If the lists have different lengths, nil will be
+    ; used as a replacement value.
+    ; Example 1: (var seq (Sequence)) (seq (zip '(a b c) '(1 2))) => '(a 1 b 2 c nil)
+    ; Example 2: ((Sequence) (zip '(a b c) '(1 2 3))) => '(a 1 b 2 c 3)
+    (fun zip (list1 list2)
+        (var res '())
+        (var len (std-list-max-item (list (len list1) (len list2))))
+        (loop 'i '(0 len)
+            (item-append! res (item-at i list1))
+            (item-append! res (item-at i list2))
+        )
+        res
+    ))
+
+; Math module. 
+; If Math is imported using (var math (Math)), then floor is called
+; either like (math (floor 2.719334)) or ((math floor) 2.719334)
+; For convenience, you can create aliases like (var floor (math floor))
+; in your programs, though polluting the environment is bad (!)
+(type Math ()
+    (var π std-math-pi)
+    (var pi std-math-pi)
+
+    ; Returns the largest of any number of arguments, all of which must be numeric.
+    ; If no arguments are provided, nil is returned.
+    (fun max (&rest numbers)
+        ; The `numbers` argument is delivered as a list, which is what the std function expects
+        (std-list-max-item numbers))
+
+    ; Rounds down to the nearest integer    
+    (var floor std-math-floor)
+    
+    ; Note that bits = 64 will cause rounding errors, since Bio internally use 64 bit floating point for numbers
+    (fun max-int (bits)
+        (cond
+            ((= bits  8) 255)
+            ((= bits 16) 65535)
+            ((= bits 32) 4294967295)
+            ((= bits 64) 18446744073709551615)
+            (255)))
+                        
+    ; Returns a linear congruent RNG, using the BSD libc formula
+    (fun make-random-generator (seed)
+        (λ ()
+            (set! seed (math.mod (+ (* 1103515245 seed) 12345) 2147483648))
+            seed))
+
+    ; Given an RNG generator, generate a list of n random numbers
+    (fun random-list (generator n) (if (= 0  n) '() (cons (generator) (random-list generator (- n 1)))))
+
+    (var module-name "std-math")
+    (var module-version '(0 1 0)))
+
+; Standard library module information
+(var module-name "std")
 (var module-version '(0 1 0))
-(var version (λ () '(Major 0 Minor 1 Patch 0)))
 
-'Done
+(set! #? nil)

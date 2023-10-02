@@ -1,8 +1,11 @@
+//! Implementation of all built-in Bio functions, symbols and math constants.
+//! Adding a built-in to Bio is as simple as adding a public constant or function in this file.
+
 const std = @import("std");
 const ast = @import("ast.zig");
 const interpreter = @import("interpreter.zig");
 const gc = @import("boehm.zig");
-const SourceLocation = @import("sourcelocation.zig").SourceLocation;
+const util = @import("util.zig");
 
 const Env = ast.Env;
 const Expr = ast.Expr;
@@ -10,176 +13,83 @@ const ExprValue = ast.ExprValue;
 const ExprType = ast.ExprType;
 const ExprErrors = ast.ExprErrors;
 const Interpreter = interpreter.Interpreter;
+const Intrinsic = ast.Intrinsic;
 
-// Intrinsic symbol- and function expressions. These expressions are not registered with
-// the GC and are thus considered pinned and never attemped deallocated.
-pub var expr_atom_last_eval = Expr{ .val = ExprValue{ .sym = "#?" } };
-pub var expr_atom_last_try_err = Expr{ .val = ExprValue{ .sym = "#!" } };
-pub var expr_atom_last_try_value = Expr{ .val = ExprValue{ .sym = "#value" } };
-pub var expr_atom_quote = Expr{ .val = ExprValue{ .sym = "quote" } };
-pub var expr_atom_quasi_quote = Expr{ .val = ExprValue{ .sym = "quasiquote" } };
-pub var expr_atom_unquote = Expr{ .val = ExprValue{ .sym = "unquote" } };
-pub var expr_atom_unquote_splicing = Expr{ .val = ExprValue{ .sym = "unquote-splicing" } };
-pub var expr_atom_list = Expr{ .val = ExprValue{ .sym = "list" } };
-pub var expr_atom_if = Expr{ .val = ExprValue{ .sym = "if" } };
-pub var expr_atom_cond = Expr{ .val = ExprValue{ .sym = "cond" } };
-pub var expr_atom_begin = Expr{ .val = ExprValue{ .sym = "begin" } };
-pub var expr_atom_false = Expr{ .val = ExprValue{ .sym = "#f" } };
-pub var expr_atom_true = Expr{ .val = ExprValue{ .sym = "#t" } };
-pub var expr_atom_nil = Expr{ .val = ExprValue{ .sym = "nil" } };
-pub var expr_atom_rest = Expr{ .val = ExprValue{ .sym = "&rest" } };
-pub var expr_atom_mut = Expr{ .val = ExprValue{ .sym = "&mut" } };
-pub var expr_atom_eval = Expr{ .val = ExprValue{ .sym = "&eval" } };
-pub var expr_atom_break = Expr{ .val = ExprValue{ .sym = "&break" } };
-pub var expr_atom_macroexpand = Expr{ .val = ExprValue{ .sym = "macroexpand" } };
-pub var expr_std_math_pi = Expr{ .val = ExprValue{ .num = std.math.pi } };
-pub var expr_std_math_e = Expr{ .val = ExprValue{ .num = std.math.e } };
-pub var expr_std_import = Expr{ .val = ExprValue{ .fun = stdImport } };
-pub var expr_std_exit = Expr{ .val = ExprValue{ .fun = stdExit } };
-pub var expr_std_verbose = Expr{ .val = ExprValue{ .fun = stdVerbose } };
-pub var expr_std_assert_true = Expr{ .val = ExprValue{ .fun = stdAssertTrue } };
-pub var expr_std_is_number = Expr{ .val = ExprValue{ .fun = stdIsNumber } };
-pub var expr_std_is_symbol = Expr{ .val = ExprValue{ .fun = stdIsSymbol } };
-pub var expr_std_is_list = Expr{ .val = ExprValue{ .fun = stdIsList } };
-pub var expr_std_is_hashmap = Expr{ .val = ExprValue{ .fun = stdIsHashmap } };
-pub var expr_std_is_err = Expr{ .val = ExprValue{ .fun = stdIsError } };
-pub var expr_std_is_callable = Expr{ .val = ExprValue{ .fun = stdIsCallable } };
-pub var expr_std_is_opaque = Expr{ .val = ExprValue{ .fun = stdIsOpaque } };
-pub var expr_std_is_lowercase = Expr{ .val = ExprValue{ .fun = stdIsLowercase } };
-pub var expr_std_is_uppercase = Expr{ .val = ExprValue{ .fun = stdIsUppercase } };
-pub var expr_std_lowercase = Expr{ .val = ExprValue{ .fun = stdLowercase } };
-pub var expr_std_uppercase = Expr{ .val = ExprValue{ .fun = stdUppercase } };
-pub var expr_std_gensym = Expr{ .val = ExprValue{ .fun = stdGenSym } };
-pub var expr_std_quote = Expr{ .val = ExprValue{ .fun = stdQuote } };
-pub var expr_std_unquote = Expr{ .val = ExprValue{ .fun = stdUnquote } };
-pub var expr_std_unquote_splicing = Expr{ .val = ExprValue{ .fun = stdUnquoteSplicing } };
-pub var expr_std_quasi_quote = Expr{ .val = ExprValue{ .fun = stdQuasiQuote } };
-pub var expr_std_double_quote = Expr{ .val = ExprValue{ .fun = stdDoubleQuote } };
-pub var expr_std_len = Expr{ .val = ExprValue{ .fun = stdLen } };
-pub var expr_std_contains = Expr{ .val = ExprValue{ .fun = stdContains } };
-pub var expr_std_clone = Expr{ .val = ExprValue{ .fun = stdClone } };
-pub var expr_std_range = Expr{ .val = ExprValue{ .fun = stdRange } };
-pub var expr_std_rotate_left = Expr{ .val = ExprValue{ .fun = stdRotateLeft } };
-pub var expr_std_item_at = Expr{ .val = ExprValue{ .fun = stdItemAt } };
-pub var expr_std_item_set = Expr{ .val = ExprValue{ .fun = stdItemSet } };
-pub var expr_std_item_remove = Expr{ .val = ExprValue{ .fun = stdItemRemove } };
-pub var expr_std_string = Expr{ .val = ExprValue{ .fun = stdString } };
-pub var expr_std_print = Expr{ .val = ExprValue{ .fun = stdPrint } };
-pub var expr_std_env = Expr{ .val = ExprValue{ .fun = stdEnv } };
-pub var expr_std_self = Expr{ .val = ExprValue{ .fun = stdSelf } };
-pub var expr_std_parent = Expr{ .val = ExprValue{ .fun = stdParent } };
-pub var expr_std_define = Expr{ .val = ExprValue{ .fun = stdDefine } };
-pub var expr_std_vars = Expr{ .val = ExprValue{ .fun = stdVars } };
-pub var expr_std_lambda = Expr{ .val = ExprValue{ .fun = stdLambda } };
-pub var expr_std_macro = Expr{ .val = ExprValue{ .fun = stdMacro } };
-pub var expr_std_eval_string = Expr{ .val = ExprValue{ .fun = stdEvalString } };
-pub var expr_std_eval = Expr{ .val = ExprValue{ .fun = stdEval } };
-pub var expr_std_apply = Expr{ .val = ExprValue{ .fun = stdApply } };
-pub var expr_std_list = Expr{ .val = ExprValue{ .fun = stdList } };
-pub var expr_std_map_new = Expr{ .val = ExprValue{ .fun = stdHashmapNew } };
-pub var expr_std_map_put = Expr{ .val = ExprValue{ .fun = stdHashmapPut } };
-pub var expr_std_map_get = Expr{ .val = ExprValue{ .fun = stdHashmapGet } };
-pub var expr_std_map_remove = Expr{ .val = ExprValue{ .fun = stdHashmapRemove } };
-pub var expr_std_map_clear = Expr{ .val = ExprValue{ .fun = stdHashmapClear } };
-pub var expr_std_map_keys = Expr{ .val = ExprValue{ .fun = stdHashmapKeys } };
-pub var expr_std_loop = Expr{ .val = ExprValue{ .fun = stdLoop } };
-pub var expr_std_split = Expr{ .val = ExprValue{ .fun = stdSplit } };
-pub var expr_std_append = Expr{ .val = ExprValue{ .fun = stdAppend } };
-pub var expr_std_unset = Expr{ .val = ExprValue{ .fun = stdUnset } };
-pub var expr_std_error = Expr{ .val = ExprValue{ .fun = stdError } };
-pub var expr_std_try = Expr{ .val = ExprValue{ .fun = stdTry } };
-pub var expr_std_set = Expr{ .val = ExprValue{ .fun = stdSet } };
-pub var expr_std_logical_and = Expr{ .val = ExprValue{ .fun = stdLogicalAnd } };
-pub var expr_std_logical_or = Expr{ .val = ExprValue{ .fun = stdLogicalOr } };
-pub var expr_std_logical_not = Expr{ .val = ExprValue{ .fun = stdLogicalNot } };
-pub var expr_std_sum = Expr{ .val = ExprValue{ .fun = stdSum } };
-pub var expr_std_sub = Expr{ .val = ExprValue{ .fun = stdSub } };
-pub var expr_std_mul = Expr{ .val = ExprValue{ .fun = stdMul } };
-pub var expr_std_div = Expr{ .val = ExprValue{ .fun = stdDiv } };
-pub var expr_std_pow = Expr{ .val = ExprValue{ .fun = stdPow } };
-pub var expr_std_time_now = Expr{ .val = ExprValue{ .fun = stdTimeNow } };
-pub var expr_std_floor = Expr{ .val = ExprValue{ .fun = stdFloor } };
-pub var expr_std_round = Expr{ .val = ExprValue{ .fun = stdRound } };
-pub var expr_std_min = Expr{ .val = ExprValue{ .fun = stdMin } };
-pub var expr_std_max = Expr{ .val = ExprValue{ .fun = stdMax } };
-pub var expr_std_as = Expr{ .val = ExprValue{ .fun = stdAs } };
-pub var expr_std_split_atom = Expr{ .val = ExprValue{ .fun = stdSplitAtom } };
-pub var expr_std_swap = Expr{ .val = ExprValue{ .fun = stdSwap } };
-pub var expr_std_order = Expr{ .val = ExprValue{ .fun = stdOrder } };
-pub var expr_std_eq = Expr{ .val = ExprValue{ .fun = stdEq } };
-pub var expr_std_eq_approx = Expr{ .val = ExprValue{ .fun = stdEqApprox } };
-pub var expr_std_eq_reference = Expr{ .val = ExprValue{ .fun = stdEqReference } };
-pub var expr_std_run_gc = Expr{ .val = ExprValue{ .fun = stdRunGc } };
-pub var expr_std_file_open = Expr{ .val = ExprValue{ .fun = stdFileOpen } };
-pub var expr_std_file_close = Expr{ .val = ExprValue{ .fun = stdFileClose } };
-pub var expr_std_file_read_line = Expr{ .val = ExprValue{ .fun = stdFileReadLine } };
-pub var expr_std_file_write_line = Expr{ .val = ExprValue{ .fun = stdFileWriteLine } };
-pub var expr_std_file_read_byte = Expr{ .val = ExprValue{ .fun = stdFileReadByte } };
+const isFalsy = util.isFalsy;
+const isEmptyList = util.isEmptyList;
+const isError = util.isError;
+const requireExactArgCount = util.requireExactArgCount;
+const requireMinimumArgCount = util.requireMinimumArgCount;
+const requireMaximumArgCount = util.requireMaximumArgCount;
+const requireType = util.requireType;
 
-pub fn requireExactArgCount(args_required: usize, args: []const *Expr) !void {
-    if (args.len != args_required) {
-        return ExprErrors.InvalidArgumentCount;
-    }
-}
+// Intrinsic numberic constants
+pub const @"std-math-e": f64 = std.math.e;
+pub const @"std-math-pi": f64 = std.math.pi;
 
-pub fn requireMinimumArgCount(args_required: usize, args: []const *Expr) !void {
-    if (args.len < args_required) {
-        return ExprErrors.InvalidArgumentCount;
-    }
-}
+// Intrinsic symbols
+pub const @"#!": void = {};
+pub const @"#?": void = {};
+pub const @"#f": void = {};
+pub const @"#t": void = {};
+pub const @"#value": void = {};
+pub const @"&break": void = {};
+pub const @"&eval": void = {};
+pub const @"&mut": void = {};
+pub const @"&rest": void = {};
+pub const @"if": void = {};
+pub const begin: void = {};
+pub const cond: void = {};
+pub const macroexpand: void = {};
+pub const nil: void = {};
 
-pub fn requireType(ev: *Interpreter, expr: *Expr, etype: ExprType) !void {
-    if (expr.val != etype) {
-        const str = try expr.toStringAlloc();
-        try ev.printErrorFmt(&expr.src, "Expected {}, got argument type: {}, actual value: {s}\n", .{ etype, std.meta.activeTag(expr.val), str });
-        return ExprErrors.AlreadyReported;
-    }
-}
-
-/// Signals the interpreter to terminate with an exit code. We don't simply terminate
-/// the process here, as we're running with leak detection, but rather sets and exit code
+/// Tells the interpreter to terminate with an exit code. We don't simply terminate
+/// the process here, as we're running with leak detection, but rather sets an exit code
 /// which causes the eval loop to exit. This helps stress testing the GC/cleanup logic.
-pub fn stdExit(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn exit(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var exit_code: u8 = 0;
-    if (args.len > 0 and args[0].val == ExprType.num) {
-        exit_code = @as(u8, @intFromFloat(args[0].val.num));
+    if (args.len > 0) {
+        // and args[0].val == ExprType.num
+        const code_expr = try ev.eval(env, args[0]);
+        try requireType(ev, code_expr, ExprType.num);
+        exit_code = @as(u8, @intFromFloat(code_expr.val.num));
     }
 
     ev.exit_code = exit_code;
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// Open a file for reading and writing, create it if necessary. This produces an "any"
 /// expression, where the value is an opaque pointer that's casted back to its actual
 /// type when needed, such as in stdFileReadline.
-pub fn stdFileOpen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"io.open-file"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
         var file = try gc.allocator().create(std.fs.File);
         file.* = std.fs.cwd().createFile(filename_expr.val.sym, .{ .truncate = false, .read = true }) catch |err| {
-            try ev.printErrorFmt(&filename_expr.src, "Could not open file: {}\n", .{err});
+            try ev.printErrorFmt(filename_expr, "Could not open file: {s}", .{ast.errString(err)});
             return err;
         };
         var expr = try Expr.create(true);
         expr.val = ExprValue{ .any = @intFromPtr(file) };
         return expr;
     }
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// Close a file, and deallocate the associated File object
-pub fn stdFileClose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"io.close-file"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
     const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
     file.close();
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// Reads a byte from the given file
-pub fn stdFileReadByte(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
+pub fn @"io.read-byte"(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
@@ -193,7 +103,7 @@ pub fn stdFileReadByte(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
 }
 
 /// Reads a line from the given file, or from stdin if no argument is given
-pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
+pub fn @"io.read-line"(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
     var reader: std.fs.File.Reader = std.io.getStdIn().reader();
     if (args.len > 0) {
         try requireExactArgCount(1, args);
@@ -216,7 +126,7 @@ pub fn stdFileReadLine(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
 }
 
 /// Appends a line to the file, or to stdout if no argument is given
-pub fn stdFileWriteLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"io.write-line"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(1, args);
     const line_to_write = try ev.eval(env, args[args.len - 1]);
     try requireType(ev, line_to_write, ExprType.sym);
@@ -234,48 +144,35 @@ pub fn stdFileWriteLine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerr
 
     try writer.writeAll(line_to_write.val.sym);
     _ = try writer.write("\n");
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// Import and evaluate a Bio file
-pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn import(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
         var out: [std.fs.MAX_PATH_BYTES]u8 = undefined;
         var path = std.fs.realpath(filename_expr.val.sym, &out) catch |err| switch (err) {
             std.os.RealPathError.FileNotFound => {
-                try ev.printErrorFmt(&filename_expr.src, "File not found: {s}\n", .{filename_expr.val.sym});
+                try ev.printErrorFmt(filename_expr, "File not found: {s}", .{filename_expr.val.sym});
                 return ExprErrors.AlreadyReported;
             },
             else => return err,
         };
-        try SourceLocation.push(path[0..]);
-        defer SourceLocation.pop();
 
         const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-            try ev.printErrorFmt(&filename_expr.src, "Could not open file: {}\n", .{err});
+            try ev.printErrorFmt(filename_expr, "Could not open file: {s}", .{ast.errString(err)});
             return err;
         };
         defer file.close();
 
         const reader = file.reader();
-        var res: *Expr = &expr_atom_nil;
-        while (!ev.has_errors) {
-            if (ev.readBalancedExpr(&reader, "")) |maybe| {
-                if (maybe) |input| {
-                    if (try ev.parseAndEvalExpression(input)) |e| {
-                        res = e;
-                        try ev.env.put("#?", res);
-                    }
-                } else {
-                    break;
-                }
-            } else |err| {
-                try ev.printErrorFmt(SourceLocation.current(), "", .{});
-                try ev.printError(err);
-                break;
-            }
+        var res: *Expr = ast.getIntrinsic(.nil);
+        var expr_list = try ast.Parser.parseMultipleExpressionsFromReader(reader, try gc.allocator().dupe(u8, path));
+        for (expr_list.val.lst.items) |expr| {
+            res = try ev.eval(ev.env, expr);
+            if (ev.has_errors) break;
         }
         return res;
     } else {
@@ -283,31 +180,26 @@ pub fn stdImport(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     }
 }
 
-pub fn stdRunGc(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-gc-collect"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env, args };
     _ = gc.collect(.short);
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
-pub fn stdVerbose(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"debug-verbose"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ env, args };
     ev.verbose = !ev.verbose;
     const bool_str = if (ev.verbose) "on " else "off";
     try std.io.getStdOut().writer().print("Verbosity is now {s}\n", .{bool_str});
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
-pub fn stdAssertTrue(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn assert(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
-    if ((try ev.eval(env, args[0])) != &expr_atom_true) {
-        try std.io.getStdOut().writer().print("Assertion failed {s} line {d}\n", .{ args[0].src.file, args[0].src.line });
-
-        const str = try args[0].toStringAlloc();
-        try std.io.getStdOut().writer().print("    Expression: {s}\n", .{str});
-
-        std.process.exit(0);
+    if (!(try ev.eval(env, args[0])).isIntrinsic(.@"#t")) {
+        return ExprErrors.AssertionFailed;
     }
-    return &expr_atom_true;
+    return ast.getIntrinsic(.@"#t");
 }
 
 /// Renders the expression as a string and returns an owned slice.
@@ -319,7 +211,7 @@ fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
 }
 
 /// Implements (string expr...), i.e. rendering of expressions as strings
-pub fn stdString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn string(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var builder = std.ArrayList(u8).init(gc.allocator());
     defer builder.deinit();
     const writer = builder.writer();
@@ -333,7 +225,7 @@ pub fn stdString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 }
 
 /// Implements (print expr...)
-pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn print(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     for (args, 0..) |expr, index| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
@@ -342,12 +234,12 @@ pub fn stdPrint(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
             try std.io.getStdOut().writer().print(" ", .{});
         }
     }
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// Returns the current environment as an expression, allowing the user to make constructs
 /// such as modules and object instances.
-pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn self(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, args };
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .env = env };
@@ -355,123 +247,103 @@ pub fn stdSelf(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 }
 
 /// Returns the parent environment, or nil if the environment is the root
-pub fn stdParent(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"parent-env"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, args };
     var expr = try Expr.create(true);
     if (env.parent) |p| {
         expr.val = ExprValue{ .env = p };
         return expr;
     }
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// Print environments. Runs the GC to minimize the environment listing, unless no-gc is passed.
-pub fn stdEnv(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
-    // if (!(args.len > 0 and args[0].val == ExprType.sym and std.mem.eql(u8, args[0].val.sym, "no-gc"))) {
-    //     _ = gc.collect(.aggressive);
-    // }
-
-    // _ = ev;
+pub fn @"print-env"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = args;
 
-    // try std.io.getStdOut().writer().print("Printing env isn't supported with boehmgc yet\n", .{});
-
     // Print out all environments, including which environment is the parent.
-    for (ev.registered_envs.items) |registered_env| {
-        try std.io.getStdOut().writer().print("Environment for {s}: {*}\n", .{ registered_env.name, registered_env });
+    try std.io.getStdOut().writer().print("Environment for {s}: {*}\n", .{ env.name, env });
 
-        var iter = registered_env.map.iterator();
-        while (iter.next()) |item| {
-            try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
-            try std.io.getStdOut().writer().print("{s} = ", .{item.key_ptr.*.val.sym});
-            try item.value_ptr.*.print();
-            if (ev.verbose) {
-                try std.io.getStdOut().writer().print(", env {*}", .{item.value_ptr.*.env});
-            }
-            try std.io.getStdOut().writer().print("\n", .{});
+    var iter = env.map.iterator();
+    while (iter.next()) |item| {
+        try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
+        try std.io.getStdOut().writer().print("{s} = ", .{item.key_ptr.*.val.sym});
+        try item.value_ptr.*.print();
+        if (ev.verbose) {
+            try std.io.getStdOut().writer().print(", env {*}", .{item.value_ptr.*.env});
         }
-
-        if (registered_env.parent) |parent| {
-            try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
-            try std.io.getStdOut().writer().print("Parent environment is {s}: {*}\n", .{ parent.name, parent });
-        }
-
         try std.io.getStdOut().writer().print("\n", .{});
     }
-    return &expr_atom_nil;
+
+    // TODO: recursively print parents if first argument is #t
+    if (env.parent) |parent| {
+        try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
+        try std.io.getStdOut().writer().print("Parent environment is {s}: {*}\n", .{ parent.name, parent });
+    }
+
+    try std.io.getStdOut().writer().print("\n", .{});
+    return ast.getIntrinsic(.nil);
 }
 
 /// Like (if), but the branch is chosen based on error state
-pub fn stdTry(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"try"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
 
     // Select branch based on the presence of an error
     var branch: usize = 1;
     const result = try ev.eval(env, args[0]);
     if (result.val == ExprType.err) {
-        try ev.env.put(expr_atom_last_try_err.val.sym, result);
+        try ev.env.put(@tagName(Intrinsic.@"#!"), result);
         branch += 1;
     } else {
-        try ev.env.put(expr_atom_last_try_value.val.sym, result);
+        try ev.env.put(@tagName(Intrinsic.@"#value"), result);
     }
 
     // The error branch is optional
     if (branch < args.len) {
         return try ev.eval(env, args[branch]);
     } else {
-        return &expr_atom_nil;
+        return ast.getIntrinsic(.nil);
     }
 }
 
 /// Create an error expression
-pub fn stdError(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"error"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     return try ast.makeError(try ev.eval(env, args[0]));
 }
 
-pub fn isEmptyList(expr: *Expr) bool {
-    return (expr.val == ExprType.lst and expr.val.lst.items.len == 0);
-}
-
-pub fn isError(expr: *Expr) bool {
-    return expr.val == ExprType.err;
-}
-
-pub fn isFalsy(expr: *Expr) bool {
-    return expr == &expr_atom_false or expr == &expr_atom_nil or isEmptyList(expr) or isError(expr);
-}
-
 /// Ordering, where lists are compared recurisively
-fn order(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!std.math.Order {
+fn order_impl(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!std.math.Order {
     try requireExactArgCount(2, args);
     const op1 = args[0];
     const op2 = args[1];
 
     if (op1.val == ExprType.num and op2.val == ExprType.num) {
         return std.math.order(op1.val.num, op2.val.num);
-    } else if (op1 == &expr_atom_nil and op2 == &expr_atom_nil) {
+    } else if (op1.isIntrinsic(.nil) and op2.isIntrinsic(.nil)) {
         return std.math.Order.eq;
-    } else if (op1 == &expr_atom_nil and op2 == &expr_atom_false) {
+    } else if (op1.isIntrinsic(.nil) and op2.isIntrinsic(.@"#f")) {
         return std.math.Order.eq;
-    } else if (op1 == &expr_atom_true and op2 == &expr_atom_true) {
+    } else if (op1.isIntrinsic(.@"#t") and op2.isIntrinsic(.@"#t")) {
         return std.math.Order.eq;
-    } else if (op1 == &expr_atom_true) {
+    } else if (op1.isIntrinsic(.@"#t")) {
         return std.math.Order.lt;
-    } else if (op1 == &expr_atom_false and isFalsy(op2)) { // and (op2 == &expr_atom_false or op2 == &expr_atom_nil)) {
+    } else if (op1.isIntrinsic(.@"#f") and isFalsy(op2)) {
         return std.math.Order.eq;
-    } else if (op1 == &expr_atom_false) {
+    } else if (op1.isIntrinsic(.@"#f")) {
         return std.math.Order.lt;
     } else if (op1.val == ExprType.sym and op2.val == ExprType.sym) {
         return std.mem.order(u8, op1.val.sym, op2.val.sym);
-    } else if (op1 == &expr_atom_nil) {
+    } else if (op1.isIntrinsic(.nil)) {
         return if (isEmptyList(op2)) std.math.Order.eq else std.math.Order.lt;
-    } else if (op2 == &expr_atom_nil) {
+    } else if (op2.isIntrinsic(.nil)) {
         return if (isEmptyList(op1)) std.math.Order.eq else std.math.Order.gt;
     } else if (op1.val == ExprType.lst and op2.val == ExprType.lst) {
         var res = std.math.order(op1.val.lst.items.len, op2.val.lst.items.len);
         if (res == std.math.Order.eq) {
             for (op1.val.lst.items, 0..) |item, index| {
-                res = try order(ev, env, &.{ item, op2.val.lst.items[index] });
+                res = try order_impl(ev, env, &.{ item, op2.val.lst.items[index] });
                 if (res != std.math.Order.eq) {
                     return res;
                 }
@@ -479,14 +351,14 @@ fn order(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!std.math.Ord
         }
         return res;
     } else {
-        return ExprErrors.InvalidArgumentType;
+        return std.math.Order.lt;
     }
 }
 
 /// Returns an numeric expression with values -1, 0, 1 to represent <, =, > respectively
-pub fn stdOrder(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn order(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
-    return switch (try order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) })) {
+    return switch (try order_impl(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) })) {
         std.math.Order.lt => return ast.makeNumExpr(-1),
         std.math.Order.eq => return ast.makeNumExpr(0),
         std.math.Order.gt => return ast.makeNumExpr(1),
@@ -495,17 +367,18 @@ pub fn stdOrder(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 
 /// Turn a boolean into #f or #t
 fn boolExpr(val: bool) *Expr {
-    return if (val) &expr_atom_true else &expr_atom_false;
+    return if (val) ast.getIntrinsic(.@"#t") else ast.getIntrinsic(.@"#f");
 }
 
 /// Check for equality. If the order operation fails, such as incompatiable types, false is returned.
-pub fn stdEq(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"="(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
-    return boolExpr((order(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) }) catch return &expr_atom_false) == std.math.Order.eq);
+    // return boolExpr((order_impl(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) }) catch return ast.getIntrinsic(.@"#f")) == std.math.Order.eq);
+    return boolExpr((try order_impl(ev, env, &.{ try ev.eval(env, args[0]), try ev.eval(env, args[1]) })) == std.math.Order.eq);
 }
 
 /// Swap the values of two variables in the current or a parent environment
-pub fn stdSwap(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"swap!"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     try requireType(ev, args[0], ExprType.sym);
     try requireType(ev, args[1], ExprType.sym);
@@ -514,20 +387,20 @@ pub fn stdSwap(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 
     try env.put(args[0].val.sym, v1);
     try env.put(args[1].val.sym, v0);
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
-/// Returns #t if the two arguments evaluate to the exact same object
-/// This is mostly useful for debugging Bio itself
+/// Returns #t if the two arguments references the same Expr in memory, on other words
+/// pointer equality.
 /// (^= nil nil) -> #t
-pub fn stdEqReference(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"^="(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     return boolExpr((try ev.eval(env, args[0])) == (try ev.eval(env, args[1])));
 }
 
 /// Compare floats with a small relative epsilon comparison. An optional third argument overrides the tolerance.
 /// If the input are symbols, case-insensitive comparison is performed.
-pub fn stdEqApprox(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"~="(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     const op1 = try ev.eval(env, args[0]);
     const op2 = try ev.eval(env, args[1]);
@@ -548,55 +421,56 @@ pub fn stdEqApprox(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     }
 }
 
-pub fn stdIsNumber(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"number?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
-        ExprType.num => &expr_atom_true,
-        else => &expr_atom_false,
+        ExprType.num => ast.getIntrinsic(.@"#t"),
+        else => ast.getIntrinsic(.@"#f"),
     };
 }
 
-pub fn stdIsSymbol(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"symbol?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
-        ExprType.sym => &expr_atom_true,
-        else => &expr_atom_false,
+        ExprType.sym => ast.getIntrinsic(.@"#t"),
+        else => ast.getIntrinsic(.@"#f"),
     };
 }
 
-pub fn stdIsList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"list?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return boolExpr(arg.val == ExprType.lst);
 }
 
-pub fn stdIsHashmap(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"hashmap?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return boolExpr(arg.val == ExprType.map);
 }
 
-pub fn stdIsError(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"error?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return boolExpr(arg.val == ExprType.err);
 }
 
-pub fn stdIsCallable(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"callable?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
-        ExprType.fun, ExprType.lam, ExprType.mac => &expr_atom_true,
-        else => &expr_atom_false,
+        ExprType.fun, ExprType.lam, ExprType.mac => ast.getIntrinsic(.@"#t"),
+        else => ast.getIntrinsic(.@"#f"),
     };
 }
 
-pub fn stdIsOpaque(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"opaque?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
-        ExprType.any => &expr_atom_true,
-        else => &expr_atom_false,
+        ExprType.any => ast.getIntrinsic(.@"#t"),
+        else => ast.getIntrinsic(.@"#f"),
     };
 }
 
 /// (gensym) will generate a unique identifier
-pub fn stdGenSym(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
+/// TODO: take an optional prefix, like Racket, e.g. (gensym "apple") -> apple_41
+pub fn gensym(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(0, args);
     ev.gensym_seq += 1;
     const sym = try std.fmt.allocPrint(gc.allocator(), "gensym_{d}", .{ev.gensym_seq});
@@ -604,7 +478,7 @@ pub fn stdGenSym(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr 
 }
 
 /// Renders the expression and wraps it in double quotes, returning a new atom
-pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"double-quote"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
 
@@ -614,14 +488,16 @@ pub fn stdDoubleQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 }
 
 /// Returns the first argument unevaluated. Multiple arguments is an error,
-/// though the argument may be a list. (quote (1 2 3)) -> '(1 2 3)
-pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+/// though the argument may be a list. (quote (1 2 3)) is the same as '(1 2 3)
+pub fn quote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env };
     try requireExactArgCount(1, args);
 
     // We must make a fresh copy for quoted lists. Consider (var lst '(1 2 3)) in a lambda. If not making a copy,
-    // the list would be memoized between calls. This is not a problem for (list 1 2 3) since the list function
-    // per definition creates a new list on every evaluation.
+    // the list is memoized between calls (by the fact that the parser creates the list once).
+    // This is not a problem for (list 1 2 3) since the list function per definition creates a new list on every evaluation.
+    // Some Lisps takes the stance that quoted lists are read-only and may or may not return a copy. In Bio,
+    // quoted lists are guaranteed to be fresh shallow copies, and can thus be safely modified.
     if (args[0].val == ExprType.lst) {
         return try ast.makeListExpr(args[0].val.lst.items);
     }
@@ -629,17 +505,15 @@ pub fn stdQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 }
 
 /// Unquote is only useful in combination with quasiquoting, see stdQuasiQuote
-pub fn stdUnquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ env, args };
-    try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote inside a quasiquote expression\n", .{});
-    return ExprErrors.AlreadyReported;
+pub fn unquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = &.{ ev, env, args };
+    return ExprErrors.NotInQuasiQuote;
 }
 
 /// Unquote with splicing is only useful in combination with quasiquoting, see stdQuasiQuote
-pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    _ = &.{ env, args };
-    try ev.printErrorFmt(SourceLocation.current(), "Can only use unquote-splicing inside a quasiquote expression\n", .{});
-    return ExprErrors.AlreadyReported;
+pub fn @"unquote-splicing"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    _ = &.{ ev, env, args };
+    return ExprErrors.NotInQuasiQuote;
 }
 
 /// Recursive quasi-quote expansion
@@ -647,7 +521,7 @@ pub fn stdUnquoteSplicing(ev: *Interpreter, env: *Env, args: []const *Expr) anye
 ///   (quasiquote (1 2 (+ 1 2) 4))                     -> '(1 2 (+ 1 2) 4)
 ///   (quasiquote (1 (unquote-splicing (list 2 3)) 4)) -> '(1 2 3 4)
 ///   `(1 ,@(list 2 3) 4)                              -> '(1 2 3 4)
-pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn quasiquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
 
     const qq_expander = struct {
@@ -657,22 +531,23 @@ pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
                 for (expr.val.lst.items) |item| {
                     // May encounter empty lists, such as lambda ()
                     if (item.val == ExprType.lst and item.val.lst.items.len > 0) {
-                        if (item.val.lst.items[0] == &expr_atom_unquote) {
+                        if (item.val.lst.items[0].isIntrinsic(.unquote)) {
                             try result_list.val.lst.append(try ev_inner.eval(env_inner, item.val.lst.items[1]));
-                        } else if (item.val.lst.items[0] == &expr_atom_unquote_splicing) {
-                            const list = try ev_inner.eval(env_inner, item.val.lst.items[1]);
-                            try requireType(ev_inner, list, ExprType.lst);
-                            for (list.val.lst.items) |list_item| {
+                            // } else if (item.val.lst.items[0] == &expr_atom_unquote_splicing) {
+                        } else if (item.val.lst.items[0].isIntrinsic(.@"unquote-splicing")) {
+                            const splicing_list = try ev_inner.eval(env_inner, item.val.lst.items[1]);
+                            try requireType(ev_inner, splicing_list, ExprType.lst);
+                            for (splicing_list.val.lst.items) |list_item| {
                                 try result_list.val.lst.append(list_item);
                             }
                         } else {
                             try result_list.val.lst.append(try expand(ev_inner, env_inner, item));
                         }
                     } else {
-                        if (item.val == ExprType.sym and item == &expr_atom_unquote) {
+                        if (item.val == ExprType.sym and item.isIntrinsic(.unquote)) {
                             return try ev_inner.eval(env_inner, expr.val.lst.items[1]);
-                        } else if (item.val == ExprType.sym and item == &expr_atom_unquote_splicing) {
-                            try ev_inner.printErrorFmt(&expr.src, "unquotes-splice must be called from within a list\n", .{});
+                        } else if (item.val == ExprType.sym and item.isIntrinsic(.@"unquote-splicing")) {
+                            try ev_inner.printErrorFmt(expr, "unquotes-splice must be called from within a list", .{});
                             return ExprErrors.AlreadyReported;
                         } else {
                             try result_list.val.lst.append(item);
@@ -703,30 +578,29 @@ pub fn stdQuasiQuote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 
 /// Implements (item-at list index) and (item-at symbol index)
 /// If index is out of bounds, nil is returned
-pub fn stdItemAt(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"item-at"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const index_arg = try ev.eval(env, args[0]);
     const container = try ev.eval(env, args[1]);
     try requireType(ev, index_arg, ExprType.num);
     const index = @as(isize, @intFromFloat(index_arg.val.num));
     switch (container.val) {
-        ExprType.lst => |*list| {
-            return if (index >= 0 and index < list.items.len) list.items[@as(usize, @intCast(index))] else &expr_atom_nil;
+        ExprType.lst => |*lst| {
+            return if (index >= 0 and index < lst.items.len) lst.items[@as(usize, @intCast(index))] else ast.getIntrinsic(.nil);
         },
         ExprType.sym => |sym| {
             if (index >= 0 and index < sym.len) {
-                //return try ast.makeListExpr(&.{ &expr_atom_quote, try ast.makeAtomByDuplicating(&.{sym[@intCast(usize, index)]}) });
                 return try ast.makeAtomByDuplicating(&.{sym[@as(usize, @intCast(index))]});
-            } else return &expr_atom_nil;
+            } else return ast.getIntrinsic(.nil);
         },
-        else => return &expr_atom_nil,
+        else => return ast.getIntrinsic(.nil),
     }
 }
 
 /// Implements list mutation. If the index is out of bounds, the item is appended or prepended accordingly.
 /// The previous value is returned, or nil if index was out of bounds.
 /// (item-set 4 list newitem)
-pub fn stdItemSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"item-set"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(3, args);
     const indexArg = try ev.eval(env, args[0]);
     const listArg = try ev.eval(env, args[1]);
@@ -736,22 +610,22 @@ pub fn stdItemSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
 
     // Index may be negative to prepend, so we use isize
     const index = @as(isize, @intFromFloat(indexArg.val.num));
-    var list = &listArg.val.lst;
-    if (index >= 0 and index < list.items.len) {
-        var old = list.items[@as(usize, @intCast(index))];
-        list.items[@as(usize, @intCast(index))] = newItem;
+    var lst = &listArg.val.lst;
+    if (index >= 0 and index < lst.items.len) {
+        var old = lst.items[@as(usize, @intCast(index))];
+        lst.items[@as(usize, @intCast(index))] = newItem;
         return old;
-    } else if (index >= list.items.len) {
-        try list.append(newItem);
-        return &expr_atom_nil;
+    } else if (index >= lst.items.len) {
+        try lst.append(newItem);
+        return ast.getIntrinsic(.nil);
     } else {
-        try list.insert(0, newItem);
-        return &expr_atom_nil;
+        try lst.insert(0, newItem);
+        return ast.getIntrinsic(.nil);
     }
 }
 
 /// In-place removal of the n'th item. The removed item is returned, or nil if index is out of bounds.
-pub fn stdItemRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"item-remove!"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const indexArg = try ev.eval(env, args[0]);
     const listArg = try ev.eval(env, args[1]);
@@ -760,16 +634,16 @@ pub fn stdItemRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 
     // Index may be negative to prepend, so we use isize
     const index = @as(isize, @intFromFloat(indexArg.val.num));
-    var list = &listArg.val.lst;
-    if (index >= 0 and index < list.items.len) {
-        return list.swapRemove(@as(usize, @intCast(index)));
+    var lst = &listArg.val.lst;
+    if (index >= 0 and index < lst.items.len) {
+        return lst.swapRemove(@as(usize, @intCast(index)));
     }
-    return &expr_atom_nil;
+    return ast.getIntrinsic(.nil);
 }
 
 /// In-place rotate a list left by the given amount
 /// (rotate-left list amount)
-pub fn stdRotateLeft(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"rotate-left!"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const listArg = try ev.eval(env, args[0]);
     const amountArg = try ev.eval(env, args[1]);
@@ -783,12 +657,12 @@ pub fn stdRotateLeft(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 /// Implements (range list start? end?) where negative indices are end-relative
 /// If both start and end are missing, return the first element as in (car list)
 /// For range results, this produces a new list
-pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn range(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(1, args);
     const listArg = try ev.eval(env, args[0]);
     try requireType(ev, listArg, ExprType.lst);
-    const list = &listArg.val.lst;
-    const size = @as(isize, @intCast(list.items.len));
+    const lst = &listArg.val.lst;
+    const size = @as(isize, @intCast(lst.items.len));
 
     if (args.len > 1) {
         const startArg = try ev.eval(env, args[1]);
@@ -799,8 +673,8 @@ pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
             if (args.len > 2) {
                 const endArg = try ev.eval(env, args[2]);
                 try requireType(ev, endArg, ExprType.num);
-                break :val @min(@as(isize, @intCast(list.items.len)), @as(isize, @intFromFloat(endArg.val.num)));
-            } else break :val @as(isize, @intCast(list.items.len));
+                break :val @min(@as(isize, @intCast(lst.items.len)), @as(isize, @intFromFloat(endArg.val.num)));
+            } else break :val @as(isize, @intCast(lst.items.len));
         };
 
         if (start < 0) {
@@ -811,52 +685,52 @@ pub fn stdRange(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
         }
         var res = try ast.makeListExpr(null);
         if (size > 0 and end > 0 and start >= 0 and start < size and end <= size) {
-            try res.val.lst.appendSlice(list.items[@as(usize, @intCast(start))..@as(usize, @intCast(end))]);
+            try res.val.lst.appendSlice(lst.items[@as(usize, @intCast(start))..@as(usize, @intCast(end))]);
             return res;
         } else {
-            return &expr_atom_nil;
+            return ast.getIntrinsic(.nil);
         }
     } else {
-        return if (size > 0) list.items[0] else &expr_atom_nil;
+        return if (size > 0) lst.items[0] else ast.getIntrinsic(.nil);
     }
 }
 
 /// Logical and with short-circuit
-pub fn stdLogicalAnd(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"and"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     for (args) |expr| {
         const arg = try ev.eval(env, expr);
-        if (arg == &expr_atom_true) continue;
-        if (arg == &expr_atom_false) return &expr_atom_false;
-        try ev.printErrorFmt(&expr.src, "Logical and requires boolean expressions\n", .{});
+        if (arg.isIntrinsic(.@"#t")) continue;
+        if (arg.isIntrinsic(.@"#f")) return ast.getIntrinsic(.@"#f");
+        try ev.printErrorFmt(expr, "Logical and requires boolean expressions", .{});
         return ExprErrors.AlreadyReported;
     }
 
-    return &expr_atom_true;
+    return ast.getIntrinsic(.@"#t");
 }
 
 /// Logical and with short-circuit
-pub fn stdLogicalOr(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"or"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     for (args) |expr| {
         const arg = try ev.eval(env, expr);
-        if (arg == &expr_atom_false) continue;
-        if (arg == &expr_atom_true) return &expr_atom_true;
-        try ev.printErrorFmt(&expr.src, "Logical and requires boolean expressions\n", .{});
+        if (arg.isIntrinsic(.@"#f")) continue;
+        if (arg.isIntrinsic(.@"#t")) return ast.getIntrinsic(.@"#t");
+        try ev.printErrorFmt(expr, "Logical and requires boolean expressions", .{});
         return ExprErrors.AlreadyReported;
     }
 
-    return &expr_atom_false;
+    return ast.getIntrinsic(.@"#f");
 }
 
 /// Logical not
-pub fn stdLogicalNot(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn not(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
 
-    if (isFalsy(arg)) return &expr_atom_true;
-    return &expr_atom_false;
+    if (isFalsy(arg)) return ast.getIntrinsic(.@"#t");
+    return ast.getIntrinsic(.@"#f");
 }
 
-pub fn stdSum(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"+"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var sum: f64 = 0;
     for (args) |expr| {
         const arg = try ev.eval(env, expr);
@@ -869,7 +743,7 @@ pub fn stdSum(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return ast.makeNumExpr(sum);
 }
 
-pub fn stdSub(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"-"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var res: f64 = 0;
     for (args, 0..) |expr, index| {
         const arg = try ev.eval(env, expr);
@@ -889,7 +763,7 @@ pub fn stdSub(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return ast.makeNumExpr(res);
 }
 
-pub fn stdMul(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"*"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var sum: f64 = 1;
     for (args) |expr| {
         const arg = try ev.eval(env, expr);
@@ -902,7 +776,7 @@ pub fn stdMul(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return ast.makeNumExpr(sum);
 }
 
-pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"/"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var res: f64 = 0;
     for (args, 0..) |expr, index| {
         const arg = try ev.eval(env, expr);
@@ -912,8 +786,8 @@ pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
                     res = num;
                 } else {
                     if (num == 0) {
-                        try ev.printErrorFmt(&expr.src, "Division by zero\n", .{});
-                        return &expr_atom_nil;
+                        try ev.printErrorFmt(expr, "Division by zero", .{});
+                        return ast.getIntrinsic(.nil);
                     }
                     res /= num;
                 }
@@ -925,7 +799,7 @@ pub fn stdDiv(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return ast.makeNumExpr(res);
 }
 
-pub fn stdPow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-math-pow"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const base = try ev.eval(env, args[0]);
     const exp = try ev.eval(env, args[1]);
@@ -934,7 +808,7 @@ pub fn stdPow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return ast.makeNumExpr(std.math.pow(f64, base.val.num, exp.val.num));
 }
 
-pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-time-now"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env, args };
     return ast.makeNumExpr(@as(f64, @floatFromInt(std.time.milliTimestamp())));
 }
@@ -943,35 +817,35 @@ pub fn stdTimeNow(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
 /// (contains? hashmap key)
 /// (contains? list item)
 /// (contains? somestring 'w)
-pub fn stdContains(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"contains?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const expr = try ev.eval(env, args[0]);
     const needle = try ev.eval(env, args[1]);
-    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@as(f64, @floatFromInt(0)));
+    if (expr.isIntrinsic(.nil)) return try ast.makeNumExpr(@as(f64, @floatFromInt(0)));
     switch (expr.val) {
-        ExprType.sym => return if (std.mem.indexOf(u8, expr.val.sym, needle.val.sym)) |_| &expr_atom_true else &expr_atom_false,
+        ExprType.sym => return if (std.mem.indexOf(u8, expr.val.sym, needle.val.sym)) |_| ast.getIntrinsic(.@"#t") else ast.getIntrinsic(.@"#f"),
         ExprType.lst => {
             for (expr.val.lst.items) |item| {
-                if ((try order(ev, env, &.{ needle, item })) == std.math.Order.eq) return &expr_atom_true;
+                if ((try order_impl(ev, env, &.{ needle, item })) == std.math.Order.eq) return ast.getIntrinsic(.@"#t");
             }
-            return &expr_atom_false;
+            return ast.getIntrinsic(.@"#f");
         },
         ExprType.map => {
-            return if (expr.val.map.get(needle)) |_| &expr_atom_true else &expr_atom_false;
+            return if (expr.val.map.get(needle)) |_| ast.getIntrinsic(.@"#t") else ast.getIntrinsic(.@"#f");
         },
         else => {
-            try ev.printErrorFmt(&expr.src, "len function only works on lists, maps and symbols\n", .{});
-            return &expr_atom_false;
+            try ev.printErrorFmt(expr, "len function only works on lists, maps and symbols", .{});
+            return ast.getIntrinsic(.@"#f");
         },
     }
 }
 
 /// Returns the length of a list or symbol, otherwise nil
 /// If input is nil, 0 is returned
-pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn len(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const expr = try ev.eval(env, args[0]);
-    if (expr == &expr_atom_nil) return try ast.makeNumExpr(@as(f64, @floatFromInt(0)));
+    if (expr.isIntrinsic(.nil)) return try ast.makeNumExpr(@as(f64, @floatFromInt(0)));
     switch (expr.val) {
         ExprType.sym => return try ast.makeNumExpr(@as(f64, @floatFromInt(expr.val.sym.len))),
         ExprType.lst => {
@@ -981,8 +855,8 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
             return try ast.makeNumExpr(@as(f64, @floatFromInt(expr.val.map.count())));
         },
         else => {
-            try ev.printErrorFmt(&expr.src, "len function only works on lists, maps and symbols\n", .{});
-            return &expr_atom_nil;
+            try ev.printErrorFmt(expr, "len function only works on lists, maps and symbols", .{});
+            return ast.getIntrinsic(.nil);
         },
     }
 }
@@ -991,27 +865,27 @@ pub fn stdLen(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 /// (atom.split 123)  -> '(1 2 3)
 /// (atom.split 'abc) -> '(a b c)
 /// (atom.split "a string") -> (list "a" " " "s" "t" "r" "i" "n" "g")
-pub fn stdSplitAtom(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"atom.split"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const expr = try ev.eval(env, args[0]);
     switch (expr.val) {
         ExprType.sym => {
-            const list = try ast.makeListExpr(null);
+            const lst = try ast.makeListExpr(null);
             for (expr.val.sym) |item| {
-                try list.val.lst.append(try ast.makeAtomByDuplicating(&.{item}));
+                try lst.val.lst.append(try ast.makeAtomByDuplicating(&.{item}));
             }
-            return list;
+            return lst;
         },
         ExprType.num => {
             @panic("Splitting numbers not support yet");
         },
-        else => return &expr_atom_nil,
+        else => return ast.getIntrinsic(.nil),
     }
 }
 
 /// Convert between symbols, numbers and lists. Example: (as number (io.read-line))
 /// Returns nil if the conversion fails
-pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn as(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const target_type = args[0];
     const expr = try ev.eval(env, args[1]);
@@ -1021,18 +895,18 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
             ExprType.num => return expr,
             ExprType.sym => {
                 const float = std.fmt.parseFloat(f64, expr.val.sym) catch {
-                    return &expr_atom_nil;
+                    return ast.getIntrinsic(.nil);
                 };
                 return try ast.makeNumExpr(float);
             },
-            else => return &expr_atom_nil,
+            else => return ast.getIntrinsic(.nil),
         }
     } else if (std.mem.eql(u8, target_type.val.sym, "symbol")) {
         switch (expr.val) {
             ExprType.sym => return expr,
             ExprType.num => |num| {
                 const val = try std.fmt.allocPrint(gc.allocator(), "{d}", .{num});
-                return ast.makeAtomLiteral(val, true);
+                return ast.makeSymbol(val, true);
             },
             ExprType.lst => |lst| {
                 var res = std.ArrayList(u8).init(gc.allocator());
@@ -1044,65 +918,67 @@ pub fn stdAs(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
                 }
                 return ast.makeAtomByDuplicating(res.items);
             },
-            else => return &expr_atom_nil,
+            else => return ast.getIntrinsic(.nil),
         }
     } else if (std.mem.eql(u8, target_type.val.sym, "list")) {
         if (expr.val == ExprType.lst) {
             return expr;
         }
-        const list = try ast.makeListExpr(null);
-        try list.val.lst.append(expr);
-        return list;
+        const lst = try ast.makeListExpr(null);
+        try lst.val.lst.append(expr);
+        return lst;
     } else {
-        try ev.printErrorFmt(&expr.src, "Invalid target type in (as): {s}. Must be number, symbol or list\n", .{target_type.val.sym});
-        return &expr_atom_nil;
+        try ev.printErrorFmt(expr, "Invalid target type in (as): {s}. Must be number, symbol or list", .{target_type.val.sym});
+        return ast.getIntrinsic(.nil);
     }
 }
 
-/// Split symbol into a list of symbols by splitting on one or more a separators
+/// Split a symbol into a list of symbols by splitting on one or more a separators
 /// (split "a,b,c;d" ",;") => '(a b c d)
-pub fn stdSplit(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"string.split"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const input = try ev.eval(env, args[0]);
     const needle = try ev.eval(env, args[1]);
     try requireType(ev, input, ExprType.sym);
     try requireType(ev, needle, ExprType.sym);
 
-    const list = try ast.makeListExpr(null);
+    const lst = try ast.makeListExpr(null);
     var it = std.mem.tokenize(u8, input.val.sym, needle.val.sym);
     while (it.next()) |item| {
         if (item.len == 0) {
-            try list.val.lst.append(&expr_atom_nil);
+            try lst.val.lst.append(ast.getIntrinsic(.nil));
         } else {
-            try list.val.lst.append(try ast.makeAtomByDuplicating(item));
+            try lst.val.lst.append(try ast.makeAtomByDuplicating(item));
         }
     }
 
-    return list;
+    return lst;
 }
 
-pub fn stdFloor(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-math-floor"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     try requireType(ev, arg, ExprType.num);
     return ast.makeNumExpr(@floor(arg.val.num));
 }
 
-pub fn stdRound(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-math-round"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     try requireType(ev, arg, ExprType.num);
     return ast.makeNumExpr(@round(arg.val.num));
 }
 
-pub fn minMax(ev: *Interpreter, env: *Env, args: []const *Expr, use_order: std.math.Order) anyerror!*Expr {
+fn minMax(ev: *Interpreter, env: *Env, args: []const *Expr, use_order: std.math.Order) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     try requireType(ev, arg, ExprType.lst);
-
+    if (arg.val.lst.items.len == 0) {
+        return ast.getIntrinsic(.nil);
+    }
     var winner: *Expr = arg.val.lst.items[0];
     for (arg.val.lst.items[1..]) |item| {
-        if (use_order == try order(ev, env, &.{ try ev.eval(env, winner), try ev.eval(env, item) })) {
+        if (use_order == try order_impl(ev, env, &.{ try ev.eval(env, winner), try ev.eval(env, item) })) {
             winner = item;
         }
     }
@@ -1110,19 +986,21 @@ pub fn minMax(ev: *Interpreter, env: *Env, args: []const *Expr, use_order: std.m
     return winner;
 }
 
-/// Find the smallest value in a list
-pub fn stdMin(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+/// Find the smallest value in a list.
+/// IF the list is empty, nil is returned.
+pub fn @"std-list-min-item"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return minMax(ev, env, args, std.math.Order.gt);
 }
 
-/// Find the largest value in a list
-pub fn stdMax(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+/// Find the largest value in a list.
+/// IF the list is empty, nil is returned.
+pub fn @"std-list-max-item"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     return minMax(ev, env, args, std.math.Order.lt);
 }
 
 /// This is called when a lambda is defined, not when it's invoked
 /// The first argument must be a list, namely the lambda arguments
-pub fn stdLambda(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn lambda(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     try requireType(ev, args[0], ExprType.lst);
 
@@ -1133,7 +1011,7 @@ pub fn stdLambda(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
 /// This is called when a macro is defined
 /// The first argument must be a list, namely the macro arguments
-pub fn stdMacro(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn macro(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     try requireType(ev, args[0], ExprType.lst);
 
@@ -1144,10 +1022,12 @@ pub fn stdMacro(ev: *Interpreter, _: *Env, args: []const *Expr) anyerror!*Expr {
 
 /// Evaluate the arguments, returning the last one as the result. If quote and quasiquote
 /// expressions are encountered, these are unquoted before evaluation.
-pub fn stdEval(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var res: *Expr = &expr_atom_nil;
+pub fn eval(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    var res: *Expr = ast.getIntrinsic(.nil);
     for (args) |arg| {
-        if (arg.val == ExprType.lst and (arg.val.lst.items[0] == &expr_atom_quote or arg.val.lst.items[0] == &expr_atom_quasi_quote or arg.val.lst.items[0] == &expr_atom_macroexpand)) {
+        if (arg.val == ExprType.lst and
+            (arg.val.lst.items[0].isIntrinsic(.quote) or arg.val.lst.items[0].isIntrinsic(.quasiquote) or arg.val.lst.items[0].isIntrinsic(.macroexpand)))
+        {
             res = try ev.eval(env, try ev.eval(env, arg));
         } else {
             res = try ev.eval(env, arg);
@@ -1156,14 +1036,14 @@ pub fn stdEval(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
     return res;
 }
 
-/// Parses and evaluates a string (that is, a symbol containing Bio source code)
+/// Parses and evaluates a string (that is, a symbol containing Bio source code) representing one or more expressions.
 /// The argument can be a literal source string, or an expression producing a source string
-pub fn stdEvalString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"eval-string"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(1, args);
     const arg = args[0];
     const input = expr: {
         if (arg.val == ExprType.lst) {
-            if (arg.val == ExprType.lst and (arg.val.lst.items[0] == &expr_atom_quote or arg.val.lst.items[0] == &expr_atom_quasi_quote)) {
+            if (arg.val == ExprType.lst and (arg.val.lst.items[0].isIntrinsic(.quote) or arg.val.lst.items[0].isIntrinsic(.quasiquote))) {
                 break :expr try ev.eval(env, try ev.eval(env, arg));
             } else {
                 break :expr try ev.eval(env, arg);
@@ -1180,7 +1060,14 @@ pub fn stdEvalString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     };
 
     if (input.val == ExprType.sym) {
-        return try ev.eval(env, try ev.parse(input.val.sym));
+        var res = ast.getIntrinsic(.nil);
+        var expr_list = try ast.Parser.parseMultipleExpressions(input.val.sym, null);
+        for (expr_list.val.lst.items) |expr| {
+            res = try ev.eval(env, expr);
+            if (ev.has_errors) break;
+        }
+        return res;
+        // return try ev.eval(env, try ev.parse(input.val.sym));
     } else {
         return input;
     }
@@ -1188,7 +1075,7 @@ pub fn stdEvalString(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 
 /// (apply fn arg1 ... args) where the last argument must be a list, which is the common contract in Lisps
 /// Behaves as if fn is called with arguments from the list produced by (append (list arg1 ...) args)
-pub fn stdApply(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn apply(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
 
     const last_arg_list = try ev.eval(env, args[args.len - 1]);
@@ -1210,40 +1097,40 @@ pub fn stdApply(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 }
 
 /// Create a new list: (list 1 2 3 'a (* 3 x))
-pub fn stdList(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var list = try ast.makeListExpr(null);
+pub fn list(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    var lst = try ast.makeListExpr(null);
     for (args) |arg| {
-        try list.val.lst.append(try ev.eval(env, arg));
+        try lst.val.lst.append(try ev.eval(env, arg));
     }
-    return list;
+    return lst;
 }
 
 /// True if all bytes in an symbol, when considered ascii characters, are lowercase
-pub fn stdIsLowercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-string-lowercase?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     var sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
 
     for (sym.val.sym) |c| {
-        if (std.ascii.isUpper(c)) return &expr_atom_false;
+        if (std.ascii.isUpper(c)) return ast.getIntrinsic(.@"#f");
     }
-    return &expr_atom_true;
+    return ast.getIntrinsic(.@"#t");
 }
 
 /// True if all bytes in an symbol, when considered ascii characters, are uppercase
-pub fn stdIsUppercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-string-uppercase?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     var sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
 
     for (sym.val.sym) |c| {
-        if (std.ascii.isLower(c)) return &expr_atom_false;
+        if (std.ascii.isLower(c)) return ast.getIntrinsic(.@"#f");
     }
-    return &expr_atom_true;
+    return ast.getIntrinsic(.@"#t");
 }
 
 /// Returns a copy of a symbol with each byte ascii-lowercased
-pub fn stdLowercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-string-lowercase"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     var sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
@@ -1252,7 +1139,7 @@ pub fn stdLowercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
 }
 
 /// Returns a copy of a symbol with each byte ascii-uppercased
-pub fn stdUppercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-string-uppercase"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     var sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
@@ -1260,8 +1147,8 @@ pub fn stdUppercase(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     return try ast.makeAtomAndTakeOwnership(result);
 }
 
-/// Create a new hashmap: (hashmap.new (1 2) (a 3)))
-pub fn stdHashmapNew(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+/// Create a new hashmap: (std-hashmap-new (1 2) (a 3)))
+pub fn @"std-hashmap-new"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     var hmap = try ast.makeHashmapExpr(null);
     for (args) |arg| {
         try requireType(ev, arg, ExprType.lst);
@@ -1271,7 +1158,7 @@ pub fn stdHashmapNew(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
 }
 
 /// Returns the keys of the hashmap as a list
-pub fn stdHashmapKeys(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-hashmap-keys"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     var container = try ev.eval(env, args[0]);
     var keylist = try ast.makeListExpr(null);
@@ -1283,7 +1170,7 @@ pub fn stdHashmapKeys(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 
 /// (map.put mymap 1 "abc")
 /// Returns the previous value if present, or nil
-pub fn stdHashmapPut(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-hashmap-put"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(3, args);
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
@@ -1291,23 +1178,23 @@ pub fn stdHashmapPut(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!
     const v = try ev.eval(env, args[2]);
     const previous = m.val.map.get(k);
     try m.val.map.put(k, v);
-    return if (previous) |p| p else &expr_atom_nil;
+    return if (previous) |p| p else ast.getIntrinsic(.nil);
 }
 
 /// (map.get mymap 1)
 /// Returns the matching value, otherwise nil
-pub fn stdHashmapGet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-hashmap-get"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
     const k = try ev.eval(env, args[1]);
     const v = m.val.map.get(k);
-    return if (v) |val| val else &expr_atom_nil;
+    return if (v) |val| val else ast.getIntrinsic(.nil);
 }
 
 /// (map.remove mymap 1)
 /// Returns #t if the entry existed and was removed, otherwise #f
-pub fn stdHashmapRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-hashmap-remove"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(2, args);
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
@@ -1316,7 +1203,7 @@ pub fn stdHashmapRemove(ev: *Interpreter, env: *Env, args: []const *Expr) anyerr
 }
 
 /// Removes all items and returns the number of items removed
-pub fn stdHashmapClear(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"std-hashmap-clear"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
@@ -1327,7 +1214,7 @@ pub fn stdHashmapClear(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
 
 /// Clones the expression
 /// NOTE: Currently, only hashmaps are supported
-pub fn stdClone(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn clone(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
@@ -1342,7 +1229,7 @@ pub fn stdClone(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr
 /// (loop '(10 0) body goes here)      -> loops 10 times
 /// (loop 'idx '(10 0) body goes here) -> loops 10 times, current iteration count goes into the idx variable
 /// (loop '() body goes here (if cond &break)) -> loops until &break is encountered
-pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn loop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     // loop_arg1 is either a loop index variable name (a symbol we don't look up), or the criteria list
     // If the first, then use stdDefine, i.e same as (var idx 0)
@@ -1389,7 +1276,7 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
         }
     }
 
-    var last: *Expr = &expr_atom_nil;
+    var last: *Expr = ast.getIntrinsic(.nil);
     done: while (infinite or (start < end)) : (start += 1) {
         if (ev.exit_code) |_| break;
         // Evaluate loop body
@@ -1415,20 +1302,20 @@ pub fn stdLoop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 /// (append '(1 2) '(3 4)) -> (1 2 3 4)
 /// (append '(1 2 3) '4) -> (1 2 3 4)
 /// (append &mut mylist '(3 4))
-pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn append(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
 
     const Handler = struct {
-        pub fn handle(ip: *Interpreter, environment: *Env, list: *Expr, arg: *Expr) !void {
+        pub fn handle(ip: *Interpreter, environment: *Env, lst: *Expr, arg: *Expr) !void {
             const evaled = try ip.eval(environment, arg);
             if (evaled.val == ExprType.lst) {
                 for (evaled.val.lst.items) |item| {
-                    try list.val.lst.append(item);
+                    try lst.val.lst.append(item);
                 }
             } else {
                 const expr = try ip.eval(environment, arg);
-                if (expr != &expr_atom_nil) {
-                    try list.val.lst.append(expr);
+                if (!expr.isNil()) {
+                    try lst.val.lst.append(expr);
                 }
             }
         }
@@ -1436,7 +1323,7 @@ pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 
     var target_list: ?*Expr = null;
     var start_index: usize = 0;
-    if (args[0] == &expr_atom_mut) {
+    if (args[0].isIntrinsic(.@"&mut")) {
         target_list = try ev.eval(env, args[1]);
         if (target_list.?.val == ExprType.lst) {
             start_index = 2;
@@ -1459,7 +1346,7 @@ pub fn stdAppend(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
 fn putEnv(ev: *Interpreter, env: *Env, args: []const *Expr, allow_redefinition: bool) anyerror!*Expr {
     // Non-recursive lookup, because Bio allows shadowing
     if (env.lookup(args[0].val.sym, false) != null and !allow_redefinition) {
-        try ev.printErrorFmt(&args[0].src, "{s} is already defined\n", .{args[0].val.sym});
+        try ev.printErrorFmt(args[0], "{s} is already defined", .{args[0].val.sym});
         return ExprErrors.AlreadyReported;
     }
     if (args.len > 1) {
@@ -1467,35 +1354,35 @@ fn putEnv(ev: *Interpreter, env: *Env, args: []const *Expr, allow_redefinition: 
         try env.putWithSymbol(args[0], value);
         return value;
     } else {
-        try env.putWithSymbol(args[0], &expr_atom_nil);
-        return &expr_atom_nil;
+        try env.putWithSymbol(args[0], ast.getIntrinsic(.nil));
+        return ast.getIntrinsic(.nil);
     }
 }
 
 /// Adds a new binding to the current environment
-pub fn stdDefine(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    try requireMinimumArgCount(1, args);
+pub fn define(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireMaximumArgCount(2, args);
     try requireType(ev, args[0], ExprType.sym);
     return try putEnv(ev, env, args, false);
 }
 
 /// Define new variables through destructuring a list. Evaluates to the list expression.
 /// (vars a b c '(1 2 3))
-pub fn stdVars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn vars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
-    var list = try ev.eval(env, args[args.len - 1]);
-    try requireType(ev, list, ExprType.lst);
+    var lst = try ev.eval(env, args[args.len - 1]);
+    try requireType(ev, lst, ExprType.lst);
 
-    if (list.val.lst.items.len != args.len - 1) {
-        try ev.printErrorFmt(&args[0].src, "vars variable count {d} does not match list size {d}\n", .{ args.len - 1, list.val.lst.items.len });
+    if (lst.val.lst.items.len != args.len - 1) {
+        try ev.printErrorFmt(args[0], "vars variable count {d} does not match list size {d}", .{ args.len - 1, lst.val.lst.items.len });
         return ExprErrors.AlreadyReported;
     }
 
-    for (list.val.lst.items, 0..) |item, i| {
+    for (lst.val.lst.items, 0..) |item, i| {
         try env.putWithSymbol(args[i], item);
     }
 
-    return list;
+    return lst;
 }
 
 /// Replace binding in the current environment, or another environment if specified.
@@ -1503,12 +1390,11 @@ pub fn stdVars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr 
 ///   (set! mylocal 4)
 /// In a different environment:
 ///   (set! window width 50)
-pub fn stdSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"set!"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     if (args.len == 2) {
         try requireType(ev, args[0], ExprType.sym);
         return env.replace(args[0], try ev.eval(env, args[1])) catch |err| {
-            try ev.printError(err);
-            try ev.printErrorFmt(&args[0].src, "Could not set variable {s}. Make sure it is defined in the active environment.\n", .{args[0].val.sym});
+            try ev.printErrorFmt(args[0], "{s}: Could not set variable {s}. Make sure it is defined in the active environment.", .{ ast.errString(err), args[0].val.sym });
             return ExprErrors.AlreadyReported;
         };
     } else if (args.len == 3) {
@@ -1516,8 +1402,7 @@ pub fn stdSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
         var target_env = try ev.eval(env, args[0]);
         try requireType(ev, target_env, ExprType.env);
         return target_env.val.env.replace(args[1], try ev.eval(env, args[2])) catch |err| {
-            try ev.printError(err);
-            try ev.printErrorFmt(&args[0].src, "Could not set variable {s}. Make sure it is defined in the active environment.\n", .{args[0].val.sym});
+            try ev.printErrorFmt(args[0], "{s}: Could not set variable {s}. Make sure it is defined in the active environment.", .{ ast.errString(err), args[0].val.sym });
             return ExprErrors.AlreadyReported;
         };
     } else {
@@ -1526,9 +1411,9 @@ pub fn stdSet(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 }
 
 /// Remove binding if it exists
-pub fn stdUnset(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+pub fn @"unset!"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     try requireType(ev, args[0], ExprType.sym);
-    _ = env.replace(args[0], null) catch return &expr_atom_nil;
-    return &expr_atom_nil;
+    _ = env.replace(args[0], null) catch return ast.getIntrinsic(.nil);
+    return ast.getIntrinsic(.nil);
 }
