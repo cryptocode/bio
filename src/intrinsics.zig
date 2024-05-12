@@ -66,7 +66,7 @@ pub fn @"io.open-file"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        var file = try gc.allocator().create(std.fs.File);
+        const file = try gc.allocator().create(std.fs.File);
         file.* = std.fs.cwd().createFile(filename_expr.val.sym, .{ .truncate = false, .read = true }) catch |err| {
             try ev.printErrorFmt(filename_expr, "Could not open file: {s}", .{ast.errString(err)});
             return err;
@@ -153,8 +153,8 @@ pub fn import(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
         var out: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-        var path = std.fs.realpath(filename_expr.val.sym, &out) catch |err| switch (err) {
-            std.os.RealPathError.FileNotFound => {
+        const path = std.fs.realpath(filename_expr.val.sym, &out) catch |err| switch (err) {
+            error.FileNotFound => {
                 try ev.printErrorFmt(filename_expr, "File not found: {s}", .{filename_expr.val.sym});
                 return ExprErrors.AlreadyReported;
             },
@@ -169,7 +169,7 @@ pub fn import(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 
         const reader = file.reader();
         var res: *Expr = ast.getIntrinsic(.nil);
-        var expr_list = try ast.Parser.parseMultipleExpressionsFromReader(reader, try gc.allocator().dupe(u8, path));
+        const expr_list = try ast.Parser.parseMultipleExpressionsFromReader(reader, try gc.allocator().dupe(u8, path));
         for (expr_list.val.lst.items) |expr| {
             res = try ev.eval(ev.env, expr);
             if (ev.has_errors) break;
@@ -612,7 +612,7 @@ pub fn @"item-set"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*E
     const index = @as(isize, @intFromFloat(indexArg.val.num));
     var lst = &listArg.val.lst;
     if (index >= 0 and index < lst.items.len) {
-        var old = lst.items[@as(usize, @intCast(index))];
+        const old = lst.items[@as(usize, @intCast(index))];
         lst.items[@as(usize, @intCast(index))] = newItem;
         return old;
     } else if (index >= lst.items.len) {
@@ -1061,7 +1061,7 @@ pub fn @"eval-string"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror
 
     if (input.val == ExprType.sym) {
         var res = ast.getIntrinsic(.nil);
-        var expr_list = try ast.Parser.parseMultipleExpressions(input.val.sym, null);
+        const expr_list = try ast.Parser.parseMultipleExpressions(input.val.sym, null);
         for (expr_list.val.lst.items) |expr| {
             res = try ev.eval(env, expr);
             if (ev.has_errors) break;
@@ -1108,7 +1108,7 @@ pub fn list(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 /// True if all bytes in an symbol, when considered ascii characters, are lowercase
 pub fn @"std-string-lowercase?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
-    var sym = try ev.eval(env, args[0]);
+    const sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
 
     for (sym.val.sym) |c| {
@@ -1120,7 +1120,7 @@ pub fn @"std-string-lowercase?"(ev: *Interpreter, env: *Env, args: []const *Expr
 /// True if all bytes in an symbol, when considered ascii characters, are uppercase
 pub fn @"std-string-uppercase?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
-    var sym = try ev.eval(env, args[0]);
+    const sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
 
     for (sym.val.sym) |c| {
@@ -1132,7 +1132,7 @@ pub fn @"std-string-uppercase?"(ev: *Interpreter, env: *Env, args: []const *Expr
 /// Returns a copy of a symbol with each byte ascii-lowercased
 pub fn @"std-string-lowercase"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
-    var sym = try ev.eval(env, args[0]);
+    const sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
     const result = try std.ascii.allocLowerString(gc.allocator(), sym.val.sym);
     return try ast.makeAtomAndTakeOwnership(result);
@@ -1141,7 +1141,7 @@ pub fn @"std-string-lowercase"(ev: *Interpreter, env: *Env, args: []const *Expr)
 /// Returns a copy of a symbol with each byte ascii-uppercased
 pub fn @"std-string-uppercase"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
-    var sym = try ev.eval(env, args[0]);
+    const sym = try ev.eval(env, args[0]);
     try requireType(ev, sym, ExprType.sym);
     const result = try std.ascii.allocUpperString(gc.allocator(), sym.val.sym);
     return try ast.makeAtomAndTakeOwnership(result);
@@ -1233,7 +1233,7 @@ pub fn loop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
     // loop_arg1 is either a loop index variable name (a symbol we don't look up), or the criteria list
     // If the first, then use stdDefine, i.e same as (var idx 0)
-    var loop_arg1 = try ev.eval(env, args[0]);
+    const loop_arg1 = try ev.eval(env, args[0]);
     var critera: ?*Expr = null;
     var index_variable: ?*Expr = null;
     var index_increment: f64 = 1;
@@ -1241,7 +1241,7 @@ pub fn loop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     if (loop_arg1.val == ExprType.lst) {
         critera = try ev.eval(env, args[0]);
     } else if (loop_arg1.val == ExprType.sym) {
-        var num_expr = try ast.makeNumExpr(0);
+        const num_expr = try ast.makeNumExpr(0);
         index_variable = try putEnv(ev, env, &.{ loop_arg1, num_expr }, true);
 
         critera = try ev.eval(env, args[1]);
@@ -1260,8 +1260,8 @@ pub fn loop(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     if (critera.?.val.lst.items.len > 0) {
         infinite = false;
         try requireMinimumArgCount(2, critera.?.val.lst.items);
-        var first = try ev.eval(env, critera.?.val.lst.items[0]);
-        var second = try ev.eval(env, critera.?.val.lst.items[1]);
+        const first = try ev.eval(env, critera.?.val.lst.items[0]);
+        const second = try ev.eval(env, critera.?.val.lst.items[1]);
         try requireType(ev, first, ExprType.num);
         try requireType(ev, second, ExprType.num);
         start = @min(first.val.num, second.val.num);
@@ -1350,7 +1350,7 @@ fn putEnv(ev: *Interpreter, env: *Env, args: []const *Expr, allow_redefinition: 
         return ExprErrors.AlreadyReported;
     }
     if (args.len > 1) {
-        var value = try ev.eval(env, args[1]);
+        const value = try ev.eval(env, args[1]);
         try env.putWithSymbol(args[0], value);
         return value;
     } else {
@@ -1370,7 +1370,7 @@ pub fn define(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 /// (vars a b c '(1 2 3))
 pub fn vars(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireMinimumArgCount(2, args);
-    var lst = try ev.eval(env, args[args.len - 1]);
+    const lst = try ev.eval(env, args[args.len - 1]);
     try requireType(ev, lst, ExprType.lst);
 
     if (lst.val.lst.items.len != args.len - 1) {

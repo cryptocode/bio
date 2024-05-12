@@ -71,7 +71,7 @@ pub const Interpreter = struct {
                 try stdout.print("{s}\n", .{content[tok.end..info.line_end]});
                 // Print ^----- indicator
                 const caret_offset = tok.start - info.line_start;
-                var filler = try gc.allocator().alloc(u8, caret_offset);
+                const filler = try gc.allocator().alloc(u8, caret_offset);
                 @memset(filler, ' ');
                 try stdout.print("\x1b[92m{s}{s}✗~~~\x1b[0m", .{ indentation, filler });
             }
@@ -185,7 +185,7 @@ pub const Interpreter = struct {
                         // Look up a symbol or call a function in the given environment
                         ExprValue.env => |target_env| {
                             if (args_slice.len == 0 or (args_slice[0].val != ExprType.sym and args_slice[0].val != ExprType.lst)) {
-                                var arg_str = if (args_slice.len > 0)
+                                const arg_str = if (args_slice.len > 0)
                                     try args_slice[0].toStringAlloc()
                                 else
                                     "[no argument]";
@@ -221,7 +221,7 @@ pub const Interpreter = struct {
                             const kind_str = if (kind == ExprType.lam) "lambda" else "macro";
 
                             var local_env = try ast.makeEnv(parent_env, kind_str);
-                            var formals = fun.items[0].val.lst.items;
+                            const formals = fun.items[0].val.lst.items;
                             var formal_param_count = formals.len;
                             var logical_arg_count = args_slice.len;
                             var eval_formal_count: usize = 0;

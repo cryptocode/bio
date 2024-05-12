@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -20,7 +20,7 @@ pub fn build(b: *std.build.Builder) void {
         };
 
         gc.linkLibC();
-        if (target.isDarwin()) {
+        if (target.result.isDarwin()) {
             gc.linkFramework("CoreServices");
         }
         gc.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
@@ -42,7 +42,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.linkLibC();
     exe.linkLibrary(gc);
 
-    if (!target.isWindows()) {
+    if (target.result.os.tag != .windows) {
         exe.addCSourceFile(.{ .file = .{ .path = "deps/linenoise.c" }, .flags = &[_][]const u8{ "-std=c99", "-Wno-everything" } });
         exe.addIncludePath(.{ .path = "deps" });
     }

@@ -34,7 +34,7 @@ const intrinsic_map = v: {
     const intrinsic_fields = std.meta.fields(Intrinsic);
     var arr: [intrinsic_fields.len]*const Expr = undefined;
 
-    inline for (intrinsic_fields) |f| {
+    for (intrinsic_fields) |f| {
         const tag = @field(Intrinsic, f.name);
         if (@hasDecl(intrinsics, @tagName(tag))) {
             const field = @field(intrinsics, f.name);
@@ -184,7 +184,7 @@ pub const Tokenizer = struct {
 
     /// Returns the next token, or null if we're done.
     pub fn next(self: *Tokenizer) !?Token {
-        var source = self.file.content;
+        const source = self.file.content;
         const len = source.len;
 
         while (self.index < len) {
@@ -207,7 +207,7 @@ pub const Tokenizer = struct {
                 self.in_string = true;
             } else if (char == '"' and self.in_string) {
                 self.in_string = false;
-                var tok = Token{
+                const tok = Token{
                     .start = @intCast(self.index - self.token_len),
                     .end = @intCast(self.index),
                     .file = self.file,
@@ -220,7 +220,7 @@ pub const Tokenizer = struct {
             } else if (self.in_string) {
                 self.token_len += 1;
             } else if (char == '\'') {
-                var tok = Token{
+                const tok = Token{
                     .start = @intCast(self.index),
                     .end = @intCast(self.index + 1),
                     .file = self.file,
@@ -248,7 +248,7 @@ pub const Tokenizer = struct {
                         ')' => -1,
                         else => 0,
                     };
-                    var tok = Token{
+                    const tok = Token{
                         .start = @intCast(self.index),
                         .end = @intCast(self.index + 1),
                         .file = self.file,
@@ -281,7 +281,7 @@ pub const Tokenizer = struct {
 
                 // Check for splice
                 if (maybe_next != null and maybe_next.? == '@') {
-                    var tok = Token{
+                    const tok = Token{
                         .start = @intCast(self.index),
                         .end = @intCast(self.index + 2),
                         .file = self.file,
@@ -343,11 +343,11 @@ pub const Tokenizer = struct {
         std.debug.assert(tok.kind == .identifier);
         std.debug.assert(tok.end > tok.start);
 
-        var ident = self.getLexeme(tok);
+        const ident = self.getLexeme(tok);
         std.debug.assert(ident.len > 0);
 
         // For numbers, we store the result to avoid having to parse the lexeme twice
-        var num: f64 = std.fmt.parseFloat(f64, ident) catch {
+        const num: f64 = std.fmt.parseFloat(f64, ident) catch {
             return;
         };
 
@@ -363,13 +363,13 @@ test "tokenize an expression" {
     var file = File{ .content = source };
     var tokenizer = Tokenizer.init(&file);
     try std.testing.expectEqual((try tokenizer.next()).?.kind, .lparen);
-    var begin_tok = (try tokenizer.next()).?;
+    const begin_tok = (try tokenizer.next()).?;
     try std.testing.expectEqual(begin_tok.kind, .identifier);
     try std.testing.expectEqualSlices(u8, source[begin_tok.start..begin_tok.end], "begin");
     try std.testing.expectEqual((try tokenizer.next()).?.kind, .lparen);
     try std.testing.expectEqual((try tokenizer.next()).?.kind, .identifier);
     try std.testing.expectEqual((try tokenizer.next()).?.kind, .string);
-    var num_tok = (try tokenizer.next()).?;
+    const num_tok = (try tokenizer.next()).?;
     try std.testing.expectEqualSlices(u8, source[num_tok.start..num_tok.end], "5");
     try std.testing.expectEqual(num_tok.kind.number, 5);
     try std.testing.expectEqual((try tokenizer.next()).?.kind, .quasi_quote);
@@ -385,7 +385,7 @@ test "tokenize an expression" {
 }
 
 test "tokenize source with too many right parenthesis" {
-    var source =
+    const source =
         \\ (* 2 3))
     ;
     var file = File{ .content = source };
@@ -395,7 +395,7 @@ test "tokenize source with too many right parenthesis" {
 }
 
 test "tokenize source with too few right parenthesis" {
-    var source =
+    const source =
         \\ (/ (* 2 3) 1.5
     ;
     var file = File{ .content = source };
@@ -432,7 +432,7 @@ pub const Parser = struct {
     /// The `file_path`, if given, will be used in error messages.
     pub fn parseMultipleExpressionsFromReader(reader: anytype, file_path: ?[]const u8) !*Expr {
         var source = std.ArrayList(u8).init(gc.allocator());
-        var writer = source.writer();
+        const writer = source.writer();
         try util.copyBytes(reader, writer);
         return parseMultipleExpressions(try source.toOwnedSlice(), file_path);
     }
@@ -440,7 +440,7 @@ pub const Parser = struct {
     /// Returns a list expression where each entry can be evaluated.
     /// The `file_path`, if given, will be used in error messages.
     pub fn parseMultipleExpressions(source: []const u8, file_path: ?[]const u8) !*Expr {
-        var file = try gc.allocator().create(File);
+        const file = try gc.allocator().create(File);
         file.* = .{ .path = file_path, .content = source };
         var parser = Parser.init(file);
         try parser.parse();
@@ -450,7 +450,7 @@ pub const Parser = struct {
     /// Returns an expression that can be evaluated. The input is expected to have just one expression,
     /// and should thus never be used on user input.
     pub fn parseSingleExpression(source: []const u8) !*Expr {
-        var list_expr = try parseMultipleExpressions(source, null);
+        const list_expr = try parseMultipleExpressions(source, null);
         std.debug.assert(list_expr.val == .lst and list_expr.val.lst.items.len == 1);
         return list_expr.val.lst.items[0];
     }
@@ -471,7 +471,7 @@ pub const Parser = struct {
                         // std.debug.print("Imbalance!\n", .{});
                         return error.TooManyRightParens;
                     }
-                    var completed_list = self.cur;
+                    const completed_list = self.cur;
                     self.cur = self.list_stack.pop();
                     std.debug.assert(completed_list != self.cur);
                     std.debug.assert(self.cur.val == .lst);
@@ -545,7 +545,7 @@ pub const Parser = struct {
                 self.cur.val.lst.items[0].isIntrinsic(.quasiquote) or
                 self.cur.val.lst.items[0].isIntrinsic(.@"unquote-splicing")))
             {
-                var completed_list = self.cur;
+                const completed_list = self.cur;
                 self.cur = self.list_stack.pop();
                 try self.cur.val.lst.append(completed_list);
             }
@@ -693,7 +693,7 @@ pub const Expr = struct {
     /// Create a new expression with an undefined value
     pub fn create(_: bool) !*@This() {
         var allocator = gc.allocator();
-        var self = try allocator.create(Expr);
+        const self = try allocator.create(Expr);
         self.* = Expr{ .val = undefined };
         return self;
     }
@@ -702,7 +702,7 @@ pub const Expr = struct {
     /// we can later add Token information (intrinsic expressions are singletons)
     pub fn fromIntrinsic(intrinsic_expr: *Expr) !*@This() {
         var allocator = gc.allocator();
-        var expr = try allocator.create(Expr);
+        const expr = try allocator.create(Expr);
         expr.* = Expr{ .val = intrinsic_expr.val };
         // var file = File{ .content = "abcd" };
         // expr.tok = Token{ .start = 0, .end = 0, .file = file };
@@ -741,7 +741,7 @@ pub const Expr = struct {
 
     /// Returns an owned string representation of this expression
     pub fn toStringAlloc(self: *@This()) anyerror![]u8 {
-        var allocator = gc.allocator();
+        const allocator = gc.allocator();
         var ident: []const u8 = if (self.tok) |tok| if (tok.file.content.len >= tok.end) tok.file.content[tok.start..tok.end] else "?" else "??";
         // if (self.val != .lst)
         //     std.debug.print("indent {*}:{s}\n", .{ self, ident });
@@ -936,13 +936,13 @@ pub fn makeAtomAndTakeOwnership(buf: []const u8) anyerror!*Expr {
 fn makeInternedExpr(buf: []const u8, take_ownership: bool) anyerror!*Expr {
     @setEvalBranchQuota(100_000);
     if (std.meta.stringToEnum(Intrinsic, buf)) |tag| {
-        var expr = getIntrinsic(tag);
+        const expr = getIntrinsic(tag);
         if (expr.val == .sym) {
             return expr;
         }
     }
 
-    var allocator = gc.allocator();
+    const allocator = gc.allocator();
 
     // Zig's parseFloat is too lenient and accepts input like "." and "--"
     // For Bio, we require at least one digit.
@@ -974,7 +974,7 @@ fn makeInternedExpr(buf: []const u8, take_ownership: bool) anyerror!*Expr {
 /// If `take_ownership` is false, the input `buf` is copied.
 pub fn makeSymbol(buf: []const u8, take_ownership: bool) anyerror!*Expr {
     var allocator = gc.allocator();
-    var sym = sym_blk: {
+    const sym = sym_blk: {
         const maybe_entry = interned_syms.getEntry(buf);
         if (maybe_entry) |entry| {
             break :sym_blk entry.key_ptr.*;
@@ -993,7 +993,7 @@ pub fn makeSymbol(buf: []const u8, take_ownership: bool) anyerror!*Expr {
 /// Make a list expression.
 /// If `initial_expressions` is not null, each item is added *without evaluation*
 pub fn makeListExpr(initial_expressions: ?[]const *Expr) !*Expr {
-    var allocator = gc.allocator();
+    const allocator = gc.allocator();
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .lst = std.ArrayList(*Expr).init(allocator) };
     if (initial_expressions) |expressions| {
@@ -1007,7 +1007,7 @@ pub fn makeListExpr(initial_expressions: ?[]const *Expr) !*Expr {
 /// Make a hashmap expression
 /// If `initial_expressions` is not null, each item as added *without evaluation*
 pub fn makeHashmapExpr(initial_expressions: ?[]const *Expr) !*Expr {
-    var allocator = gc.allocator();
+    const allocator = gc.allocator();
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .map = std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true).init(allocator) };
 
@@ -1021,7 +1021,7 @@ pub fn makeHashmapExpr(initial_expressions: ?[]const *Expr) !*Expr {
 
 /// Make a lambda expression
 pub fn makeLambdaExpr(env: *Env) !*Expr {
-    var allocator = gc.allocator();
+    const allocator = gc.allocator();
     var expr = try Expr.create(true);
 
     // This is a crucial detail: we're recording the environment that existed at the
@@ -1034,7 +1034,7 @@ pub fn makeLambdaExpr(env: *Env) !*Expr {
 
 /// Make a macro expression
 pub fn makeMacroExpr() !*Expr {
-    var allocator = gc.allocator();
+    const allocator = gc.allocator();
     var expr = try Expr.create(true);
     expr.val = ExprValue{ .mac = std.ArrayList(*Expr).init(allocator) };
     return expr;

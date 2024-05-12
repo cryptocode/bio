@@ -9,7 +9,7 @@ pub fn main() !void {
     var interpreter = try Interpreter.init();
     defer interpreter.deinit();
 
-    var allocator = gc.allocator();
+    const allocator = gc.allocator();
 
     // Load the standard library
     {
@@ -20,7 +20,7 @@ pub fn main() !void {
         const cwd_absolute = try std.fs.cwd().realpathAlloc(allocator, ".");
         const stdpath = try std.fs.path.join(allocator, &[_][]const u8{ cwd_absolute, "std.lisp" });
 
-        var stdlib = try ast.makeListExpr(&.{ ast.getIntrinsic(.quote), try ast.makeAtomByDuplicating(stdpath) });
+        const stdlib = try ast.makeListExpr(&.{ ast.getIntrinsic(.quote), try ast.makeAtomByDuplicating(stdpath) });
         try args.append(stdlib);
         _ = try intrinsics.import(interpreter, interpreter.env, args.items);
     }

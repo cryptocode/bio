@@ -82,7 +82,7 @@ pub const BoehmGcAllocator = struct {
         _ = return_address;
         assert(len > 0);
         const alignment = @as(usize, 1) << @as(Allocator.Log2Align, @intCast(log2_align));
-        var raw = gc.GC_memalign(alignment, len);
+        const raw = gc.GC_memalign(alignment, len);
         return @as([*]u8, @ptrCast(raw));
     }
 

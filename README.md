@@ -128,7 +128,7 @@ Clone the repository and cd to the root directory.
 
 You'll need a recent [master build of Zig](https://ziglang.org/download/)
 
-Last tested with Zig version `0.12.0-dev.927+895c81ce72`
+Last tested with Zig version `0.13.0-dev.60+d841f84b8`
 
 **Build**
 
