@@ -23,9 +23,9 @@ pub fn build(b: *std.Build) void {
         if (target.result.isDarwin()) {
             gc.linkFramework("CoreServices");
         }
-        gc.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
+        gc.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
         inline for (libgc_srcs) |src| {
-            gc.addCSourceFile(.{ .file = .{ .path = "deps/github.com/ivmai/bdwgc/" ++ src }, .flags = &cflags });
+            gc.addCSourceFile(.{ .file = b.path("deps/github.com/ivmai/bdwgc/" ++ src), .flags = &cflags });
         }
 
         const gc_step = b.step("libgc", "build libgc");
@@ -34,17 +34,17 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "bio",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    exe.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
+    exe.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
     exe.linkLibC();
     exe.linkLibrary(gc);
 
     if (target.result.os.tag != .windows) {
-        exe.addCSourceFile(.{ .file = .{ .path = "deps/linenoise.c" }, .flags = &[_][]const u8{ "-std=c99", "-Wno-everything" } });
-        exe.addIncludePath(.{ .path = "deps" });
+        exe.addCSourceFile(.{ .file = b.path("deps/linenoise.c"), .flags = &[_][]const u8{ "-std=c99", "-Wno-everything" } });
+        exe.addIncludePath(b.path("deps"));
     }
 
     var inst = b.addInstallArtifact(exe, .{});
@@ -60,11 +60,11 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     var tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/tests.zig" },
+        .root_source_file = b.path("src/tests.zig"),
         .target = target,
         .optimize = optimize,
     });
-    tests.addIncludePath(.{ .path = "deps/github.com/ivmai/bdwgc/include" });
+    tests.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
     tests.linkLibC();
     tests.linkLibrary(gc);
 
