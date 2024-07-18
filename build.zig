@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     {
-        const cflags = [_][]const u8{};
+        const cflags = [_][]const u8{"-DNO_EXECUTE_PERMISSION"};
         const libgc_srcs = [_][]const u8{
             "alloc.c",    "reclaim.c", "allchblk.c", "misc.c",     "mach_dep.c", "os_dep.c",
             "mark_rts.c", "headers.c", "mark.c",     "obj_map.c",  "blacklst.c", "finalize.c",
