@@ -422,6 +422,7 @@ pub fn @"~="(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
 }
 
 pub fn @"number?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
         ExprType.num => ast.getIntrinsic(.@"#t"),
@@ -430,6 +431,7 @@ pub fn @"number?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
 }
 
 pub fn @"symbol?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
         ExprType.sym => ast.getIntrinsic(.@"#t"),
@@ -438,21 +440,25 @@ pub fn @"symbol?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
 }
 
 pub fn @"list?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return boolExpr(arg.val == ExprType.lst);
 }
 
 pub fn @"hashmap?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return boolExpr(arg.val == ExprType.map);
 }
 
 pub fn @"error?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return boolExpr(arg.val == ExprType.err);
 }
 
 pub fn @"callable?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
         ExprType.fun, ExprType.lam, ExprType.mac => ast.getIntrinsic(.@"#t"),
@@ -461,6 +467,7 @@ pub fn @"callable?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
 }
 
 pub fn @"opaque?"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    try requireExactArgCount(1, args);
     const arg = try ev.eval(env, args[0]);
     return switch (arg.val) {
         ExprType.any => ast.getIntrinsic(.@"#t"),
