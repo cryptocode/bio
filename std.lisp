@@ -52,8 +52,7 @@
     (n-times-with (len lst) (lambda (n)
         (var index (- 0 (+ n 1)))
         (var item (range lst index))
-        (if (> (car item) 0) (+= res (std-math-pow 2 n)))
-    ))
+        (if (> (car item) 0) (+= res (std-math-pow 2 n)))))
     res))
 
 ; In-place reverse a list; returns the list
@@ -63,8 +62,7 @@
     (loop 'i '(0 end)
         (var tmp (item-at i lst))
         (item-set i lst (item-at (- length i 1) lst))
-        (item-set (- length i 1) lst tmp)
-    )
+        (item-set (- length i 1) lst tmp))
     lst))
 
 ; Creates a list containing `value`, `count` times
@@ -78,7 +76,7 @@
 (var indexof (λ (lst item)
     (var res nil)
     (loop 'idx '(0 (len lst))
-        (if (= (item-at idx lst) item) (begin (set! res idx) &break))    )
+        (if (= (item-at idx lst) item) (begin (set! res idx) &break)))
     res))
 
 ; In-place replacement of first match in a list
@@ -92,8 +90,7 @@
     (var idx)
     (loop '()
         (set! idx (indexof lst item))
-        (if idx (item-set idx lst replacement) &break)
-    )
+        (if idx (item-set idx lst replacement) &break))
     lst))
 
 ; Update an item in-place by applying the given operation and operand
@@ -139,6 +136,7 @@
     `(var ,/name (lambda (,@/args) ,@/body (self)))))
 
 ; The let macro, which makes a new scope with an arbitrary number of local bindings
+;
 ; The transformation goes like this:
 ;
 ;   (let ((a 5) (b 6)) (print (* a b)))
@@ -152,8 +150,7 @@
 
     (list.iterate /binding-pairs (lambda (item)
         (append &mut params (list (car item)))
-        (append &mut args (list (eval (cadr item))))
-    ))
+        (append &mut args (list (eval (cadr item))))))
 
     `((lambda (,@params) ,@/body) ,@args)
 ))
@@ -161,9 +158,7 @@
 (var while (macro (/predicate &rest /body)
     `((loop '()
         (if (not ,/predicate) &break)
-        ,@/body
-    ))
-))
+        ,@/body))))
 
 ; The while macro expands to a tail-recursive lambda
 (var while-recursive (macro (/predicate &rest /body)
@@ -173,13 +168,8 @@
             (if ,/predicate
                 (begin
                     ,@/body
-                    (,loop-name)
-                )
-            )
-        ))
-        (,loop-name)
-    )
-))
+                    (,loop-name)))))
+        (,loop-name))))
 
 ; The n-times macro expands to a tail-recursive lambda
 (var n-times (macro (/n &rest /body)
@@ -192,20 +182,14 @@
                 (begin
                     ,@/body
                     (dec! ,countdown-var)
-                    (,loop-name)
-                )
-            )
-        ))
-        (,loop-name)
-    )
-))
+                    (,loop-name)))))
+        (,loop-name))))
 
 (var n-times-with (lambda (times fn)
     (var count 0)
     (loop (list 0 times)
         (fn count)
-        (+= count 1)
-    )))
+        (+= count 1))))
 
 ; Replaces an item in a list at a given index, returning a new list.
 ; If the index is past the end of the list, a new item is appended.
@@ -225,10 +209,8 @@
 (var matrix-at (λ (M &rest indices)
     (var res M)
     (list.iterate indices (λ (i)
-        (set! res (item-at i res))
-    ))
-    res
-))
+        (set! res (item-at i res))))
+    res))
 
 ; (matrix-set! M 'newvalue 1 2 1)
 ; The last index if the offset into the list at the given index (possibly nested lists)
@@ -243,13 +225,11 @@
             (begin
                 (set! err (error (string "matrix-set! failed: index " i " does not resolve to a list")))
                 &break))
-        (set! curlist next)
-    ))
+        (set! curlist next)))
 
     (if (error? err)
         err
-        (item-set (last indices) curlist value))
-))
+        (item-set (last indices) curlist value))))
 
 (var each-pair (lambda (lst fn)
     (if (not (nil? (car lst)))
@@ -257,12 +237,8 @@
             (fn (car lst) (car (cdr lst)))
             (if (not (nil? (cdr (cdr lst))))
                 (each-pair (cdr (cdr lst)) fn)
-                nil
-            )
-        )
-        nil
-    )
-))
+                nil))
+        nil)))
 
 ; (std-hashmap-iterate mymap (λ (key value) ... ))
 (var std-hashmap-iterate (lambda (hashmap fn)
@@ -270,16 +246,13 @@
     (var key '())
     (loop 'index (list 0 (len keys))
         (set! key (item-at index keys))
-        (fn key (std-hashmap-get hashmap key))
-    )
-))
+        (fn key (std-hashmap-get hashmap key)))))
 
 ; For hashmaps with list values, this can be used to easily inplace-add an item
 ; to that list, given a key. The list is created if necessary.
 (var std-hashmap-append! (λ (hashmap k v)
     (var cur (std-hashmap-get hashmap k))
-    (if cur (item-append! cur v) (std-hashmap-put hashmap k (list v)))
-))
+    (if cur (item-append! cur v) (std-hashmap-put hashmap k (list v)))))
 
 ; Same as (std-hashmap-put ...), except that a function is called if the item already exists
 ; rather than replacing the value. The function receives the value reference.
@@ -287,35 +260,27 @@
     (var existing (std-hashmap-get hashmap key))
     (if existing
         (fn existing)
-        (std-hashmap-put hashmap key value)
-    )
-))
+        (std-hashmap-put hashmap key value))))
 
 ; Similar to (std-hashmap-put), but does not replace the value if the key exists
 (var std-hashmap-maybe-put (λ (hashmap key value)
     (var existing (std-hashmap-get hashmap key))
     (if existing
         existing
-        (begin (std-hashmap-put hashmap key value) value)
-    )
-))
+        (begin (std-hashmap-put hashmap key value) value))))
 
 (var list.iterate (λ (lst fn)
     (loop 'index (list 0 (len lst))
         ; This is a subtle point: evaluating the argument actually looks up the
         ; item rather than evaluating it. Items themselves are thus passed to `fn` unevaluated.
-        (fn (item-at index lst))
-    )
-))
+        (fn (item-at index lst)))))
 
 (var each list.iterate)
 
 ; (sym.iterate "abc def" print)
 (var sym.iterate (λ (sym fn)
     (loop 'index (list 0 (len sym))
-        (fn (item-at index sym))
-    )
-))
+        (fn (item-at index sym)))))
 
 ; Creates a new list containing the unfiltered expressions of the input list
 ; (filter (lambda (x) (< x 5)) '(3 9 5 8 2 4 7))) => (3 2 4)
@@ -324,10 +289,7 @@
             '()
             (if (pred (car lst))
                 (cons (car lst) (filter (cdr lst) pred))
-                (filter (cdr lst) pred)
-            )
-    )
-))
+                (filter (cdr lst) pred)))))
 
 ; Calls the supplied function with arguments collected from multiple lists
 ; Fails with an error a list is not passed as the second argument
@@ -343,11 +305,8 @@
                         '()
                         (cons
                             (f (car ls))
-                            (map-one (cdr ls)))
-                    )
-                ))
-                (map-one ls)
-            )
+                            (map-one (cdr ls))))))
+                (map-one ls))
 
             (begin
                 (var map-more (λ (ls more)
@@ -355,14 +314,8 @@
                         '()
                         (cons
                             (apply f (car ls) (map car more))
-                            (map-more (cdr ls) (map cdr more)))
-                    )
-                ))
-                (map-more ls more)
-            )
-        )
-    )
-))
+                            (map-more (cdr ls) (map cdr more))))))
+                (map-more ls more))))))
 
 ; Sorts a list in an order according to the comparator, (quicksort < '(5 40 1 -3 2))  => (-3 1 2 5 40)
 (var quicksort (λ (lst comparator)
@@ -371,11 +324,7 @@
         (let ((pivot (car lst)))
             (append (quicksort (filter (cdr lst) (λ (n) (comparator n pivot))) comparator)
                     (list pivot)
-                    (quicksort (filter (cdr lst) (λ (n) (not (comparator n pivot)))) comparator)
-            )
-        )
-    )
-))
+                    (quicksort (filter (cdr lst) (λ (n) (not (comparator n pivot)))) comparator))))))
 
 ; Get the items at odd locations, (1 8 12 14 19) -> (1 12 19)
 (var odd-items (lambda (lst) (modulo-items lst !=)))
@@ -388,15 +337,11 @@
     (var index 1)
     (var res '())
     (list.iterate lst (lambda (item)
-                  (if (eval (op 0 (math.mod index 2)))
-                    (set! res (append res item))
-                    nil
-                  )
-                  (set! index (+ index 1))
-              )
-    )
-    res
-))
+        (if (eval (op 0 (math.mod index 2)))
+        (set! res (append res item))
+            nil)
+        (set! index (+ index 1))))
+    res))
 
 ; Read a number from stdin, returns an error if input is not a number
 (var io.read-number (lambda ()
@@ -404,26 +349,21 @@
     (var n (as number input))
     (if (nil? n)
         (error (as symbol (list input " is not a number")))
-        n)
-))
+        n)))
 
 ; Increment variable
 (var inc! (macro (/var)
-    `(set! ,/var (+ ,/var 1))
-))
+    `(set! ,/var (+ ,/var 1))))
 
 ; Decrement variable
 (var dec! (macro (/var)
-    `(set! ,/var (- ,/var 1))
-))
+    `(set! ,/var (- ,/var 1))))
 
 ; Returns the middle item of a list, or nil if the list is empty
 (var math.middle-item (λ (list)
     (if (> (len list) 0)
         (item-at (std-math-floor (/ (len list) 2)) list)
-        nil
-    )
-))
+        nil)))
 
 ; Returns true if `val` is between two numbers, inclusive.
 (fun math.between (val start-inclusive end-inclusive)
@@ -435,20 +375,17 @@
 (var math.safe-div (lambda (x y)
     (if (= y 0)
         (error "Division by zero")
-        (/ x y)
-    )
-))
+        (/ x y))))
 
 ; Absolute value of x
 (fun math.abs (x)
-	(if (< x 0)
-		(- x)
-		x))
+    (if (< x 0)
+        (- x)
+        x))
 
 ; Average of a list of numbers, 0 if the list is empty
 (var math.avg (lambda (x)
-    (try (math.safe-div (apply + x) (len x)) #value 0)
-))
+    (try (math.safe-div (apply + x) (len x)) #value 0)))
 
 ; Squares the input
 (var math.square (lambda (x) (* x x)))
@@ -456,8 +393,7 @@
 ; Compute sqrt using Newton's method
 (var math.sqrt (lambda (x)
     (var good-enough? (lambda (guess)
-        (< (math.abs (- (math.square guess) x)) 0.0001)
-    ))
+        (< (math.abs (- (math.square guess) x)) 0.0001)))
 
     (var improve (lambda (guess)
         (math.avg (list guess (/ x guess)))))
@@ -509,16 +445,10 @@
         ((symbol? x) "symbol")
         ((callable? x) "function")
         ((opaque? x) "opaque")
-        ("unknown")
-    )))
+        ("unknown"))))
 
 ; Alias to (exit <exit code>)
 (var quit exit)
-
-; (fun quit (&rest exit-code) 
-;     (if (not (nil? exit-code))
-;         (exit (car exit-code))
-;         (exit)))
 
 ; A collection of string utilities
 (type String ()
@@ -538,12 +468,12 @@
         (var len (std-list-max-item (list (len list1) (len list2))))
         (loop 'i '(0 len)
             (item-append! res (item-at i list1))
-            (item-append! res (item-at i list2))
-        )
-        res
-    ))
+            (item-append! res (item-at i list2)))
+        res))
 
-; Math module. 
+; Math module. This is just a starting point for the module, so there's
+; a lot missing.
+; 
 ; If Math is imported using (var math (Math)), then floor is called
 ; either like (math (floor 2.719334)) or ((math floor) 2.719334)
 ; For convenience, you can create aliases like (var floor (math floor))
