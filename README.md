@@ -1,6 +1,6 @@
 <img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
 
-Bio is an experimental Lisp dialect similar to Scheme, with an interpreter written in [Zig](https://ziglang.org)
+Bio is a Lisp dialect similar to Scheme, with some novel features like environment expressions which enable capabilities like modules and composite types.
 
 Features include macros, garbage collection, error handling, a module facility, destructuring, and a standard library.
 
@@ -9,7 +9,7 @@ Example:
 ```scheme
 (filter
     (quicksort '(5 40 1 -3 2) <)
-        (λ (x) (>= x 0)))
+        (lambda (x) (>= x 0)))
 
 (1 2 5 40)
 ```
@@ -31,7 +31,7 @@ The core of Bio is lambda expressions, from which the standard library builds sy
 Area: 35
 ```
 
-The documentation, like the language, is work in progress. For up-to-date examples, I recommend studying `std.lisp`, `test.lisp` and the files in the `examples` directory.
+*The language and its documentation is work in progress. For up-to-date examples, I recommend studying `std.lisp`, `test.lisp` and the files in the `examples` directory.*
 
 Table of Contents
 =================

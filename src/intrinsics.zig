@@ -1312,11 +1312,8 @@ pub fn append(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
                 for (evaled.val.lst.items) |item| {
                     try lst.val.lst.append(item);
                 }
-            } else {
-                const expr = try ip.eval(environment, arg);
-                if (!expr.isNil()) {
-                    try lst.val.lst.append(expr);
-                }
+            } else if (!evaled.isNil()) {
+                try lst.val.lst.append(evaled);
             }
         }
     };
