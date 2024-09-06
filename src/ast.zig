@@ -527,7 +527,9 @@ pub const Parser = struct {
                 },
                 .identifier => {
                     var atom = try makeAtomByDuplicating(self.file.content[tok.start..tok.end]);
-                    atom.tok = tok;
+                    if (std.meta.stringToEnum(Intrinsic, self.file.content[tok.start..tok.end]) == null) {
+                        atom.tok = tok;
+                    }
                     try self.cur.val.lst.append(atom);
                 },
                 .number => |n| {
