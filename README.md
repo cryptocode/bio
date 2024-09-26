@@ -1,6 +1,6 @@
 <img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
 
-*The project is in the early stages of development. To discuss all things Bio and get help with issues, feel free to join the [Discord](https://discord.gg/MXyCV3XH)*
+*The project is in the early stages of development. To discuss all things Bio and get help with issues, feel free to join the [Discord](https://discord.gg/awF7989suX)*
 
 Bio is a Lisp dialect similar to Scheme, with some novel features like environment expressions which enable capabilities like modules and composite types.
 
