@@ -1,99 +1,39 @@
 <img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
 
-Bio is an experimental Lisp dialect with an interpreter written in [Zig](https://ziglang.org)
+Bio is a Lisp dialect written in Zig. Features include macros, garbage collection, error handling, a module facility, and a small standard library.
 
-The language is Scheme inspired and features macros, garbage collection, error handling, an object/module facility, and comes with a small standard library.
+*NOTE: Bio is the result of a [Let's-write-a-Lisp article](https://cryptocode.github.io/blog/docs/bio-introduction/) and is no longer maintained beyond upgrading to new Zig versions.*
 
-A description of the project is available at [dev.to](https://dev.to/stein/bio-all-your-parentheses-are-belong-to-us-25lo)
+Example:
 
-Table of Contents
-=================
+```scheme
+(filter
+    (quicksort '(5 40 1 -3 2) <)
+        (lambda (x) (>= x 0)))
 
-   * [Building and running](#building-and-running)
-      * [Running tests](#running-tests)
-   * [Language Reference](#language-reference)
-      * [Naming conventions](#naming-conventions)
-      * [Intrinsics](#intrinsics)
-         * [nil](#nil)
-         * [#t and #f](#t-and-f)
-         * [#! and #value](#-and-value)
-         * [typename](#typename)
-         * [number? symbol? list? bool? callable? error?](#number-symbol-list-bool-callable-error)
-         * [var and define](#var-and-define)
-         * [set! and unset!](#set-and-unset)
-         * [arithmetic functions](#arithmetic-functions)
-         * [equality](#equality)
-         * [order](#order)
-         * [env and gc](#env-and-gc)
-         * [lambda and λ](#lambda-and-λ)
-         * [macro](#macro)
-         * [self and environment lookups](#self-and-environment-lookups)
-         * [&amp;rest](#rest)
-         * [quote](#quote)
-         * [quasiquote](#quasiquote)
-         * [unquote](#unquote)
-         * [unquote-splicing](#unquote-splicing)
-         * [eval](#eval)
-         * [apply](#apply)
-         * [gensym](#gensym)
-         * [if](#if)
-         * [cond](#cond)
-         * [begin](#begin)
-         * [try](#try)
-         * [error](#error)
-         * [print](#print)
-         * [as](#as)
-         * [list](#list)
-         * [append](#append)
-         * [range](#range)
-         * [len](#len)
-         * [string](#string)
-         * [import](#import)
-         * [assert](#assert)
-         * [exit](#exit)
-         * [verbose](#verbose)
-         * [math.pi and math.e](#mathpi-and-mathe)
-         * [math.floor](#mathfloor)
-         * [string.split](#stringsplit)
-      * [Standard library](#standard-library)
-         * [car, cdr, caar, cadr, cddr, caddr, last, nth](#car-cdr-caar-cadr-cddr-caddr-last-nth)
-         * [cons](#cons)
-         * [nil?](#nil-1)
-         * [atom?](#atom)
-         * [bool?](#bool)
-         * [relational functions](#relational-functions)
-         * [logical functions](#logical-functions)
-         * [let macro](#let-macro)
-         * [filter](#filter)
-         * [map](#map)
-         * [quicksort](#quicksort)
-         * [while macro](#while-macro)
-         * [each](#each)
-         * [io.read-number](#ioread-number)
-         * [typename](#typename-1)
-         * [time.now](#timenow)
-         * [double-quote](#double-quote)
-         * [inc! and dec!](#inc-and-dec)
-         * [file i/o and stdin/stdout](#file-io-and-stdinstdout)
-         * [math.odd? math.even? odd-items and even-items](#mathodd-matheven-odd-items-and-even-items)
-         * [math.abs](#mathabs)
-         * [math.pow](#mathpow)
-         * [math.average](#mathaverage)
-         * [math.sqrt](#mathsqrt)
-         * [math.safe-div](#mathsafe-div)
-         * [math.make-random-generator and math.random-list](#mathmake-random-generator-and-mathrandom-list)
-         * [math.fib and math.fact](#mathfib-and-mathfact)
-         * [Y](#y)
-      * [Modules](#modules)
-         * [Module example](#module-example)
+(1 2 5 40)
+```
+
+The core of Bio is lambda expressions, from which the standard library builds syntax like `type` and `fun`:
+
+```scheme
+; Create a composite type. This is sugar for `(var Point (lambda (x y) ... (self)))`
+(type Point (x y) 
+    (fun area () (* x y)))
+
+; Make an instance of Point
+(var pt (Point 5 7))
+
+; Call a member function. All this is just syntax sugar based on a lambda
+; returning its own environment.
+(print "Area:" (pt (area)) '\n)
+
+Area: 35
+```
 
 # Building and running
 
-Clone the repository and cd to the root directory. 
-
-You'll need a recent [master build of Zig](https://ziglang.org/download/)
-
-Last tested with `stage2` and Zig version `0.10.0-dev.4418+99c3578f6`
+Clone the repository and cd to the root directory.
 
 **Build**
 
@@ -104,13 +44,13 @@ zig build
 **Run the REPL:**
 
 ```bash
-./bio
+zig-out/bin/bio
 ```
 
 **Run a Bio source file:**
 
 ```bash
-./bio run examples/triangles.lisp
+zig-out/bin/bio run examples/triangles.lisp
 ```
 
 You can also use `import` to evaluate files from the REPL, e.g. `(import "examples/albums.lisp")`
@@ -134,12 +74,11 @@ An atom is either a 64-bit floating point number, or a symbol. A symbol is any s
 * Destructive actions have an exclamation point suffix, such as `set!`
 * Sentinels are prefixed with an ampersand, such as `&rest`
 * Symbols with special meaning are prefixed `#`, such as `#t`
-* Identifiers are kebab-case, while composite types and module variables are PascalCase
-* To logically group functions, infix dots are used, such as `io.read-number`
+* Identifiers are kebab-case, while composite types such as modules are PascalCase
 
 ## Intrinsics
 
-Intrinsics are functions, macros, and symbols implemented by the interpreter. They are building blocks for the standard library and user programs.
+Intrinsics are built-in functions, macros, and symbols implemented by the interpreter. They are building blocks for the standard library and user programs.
 
 ### nil
 
@@ -173,7 +112,7 @@ The `#!` symbol contains the error after a `try` expression. If no error occurs,
     (print "Failed: " #!))
 ```
 
-### typename 
+### typename
 
 The 'typename' functions returns a string representation of the type. The most specific classification is returned, so `(typename #t)` is "bool", even though #t is also a symbol.
 
@@ -216,11 +155,16 @@ These all return #t
 
 'var' creates a variable binding in the *current* environment. The binding will fail if it already exists in the current environment. The `define` function is just an alias to `var`
 
+Variable names can be any utf8 sequence that doesn't start with a number, " and '. Variable names are case-sensitive.
+
 ```scheme
 (var x 5)
 (define y 5)
 (var name (io.read-line))
 (var double (lambda (val) (* 2 val)))
+(var 😀 "Smiley")
+(print 😀)
+"Smiley"
 ```
 
 Local variables:
@@ -244,6 +188,19 @@ Local variables:
 3 10 2
 ```
 
+### vars
+
+A list can be destructured into variables using `vars`
+
+
+```scheme
+(var stuff '(1 2 3))
+(vars a b c stuff)
+(assert (= a 1))
+(assert (= b 2))
+(assert (= c 3))
+```
+
 ### set! and unset!
 
 Changes the value of an existing binding (values themselves are immutable). The binding is searched from current to root scope.
@@ -261,6 +218,25 @@ Changes the value of an existing binding (values themselves are immutable). The 
 ; Remove binding, allowing it to be defined again
 (unset! x)
 (var x 'hey)
+```
+
+You can optionally pass a specific environment for the binding being set as the first argument:
+
+
+```scheme
+(type Point (x y)
+    (fun area () (* x y)))
+
+(var pt (Point 5 7))
+(print "Area:" (pt (area)) '\n)
+
+Area: 35
+
+; Change x by passing the pt environment to set!
+(set! pt x 6)
+(print "Area:" (pt (area)) '\n)
+
+Area: 42
 ```
 
 ### arithmetic functions
@@ -318,12 +294,12 @@ Lists are recursively compared. If list lengths differ, the shorter one is consi
 
 Standard library functions such as `<` are implemented in terms of `order`.
 
-### env and gc
+### env
 
-`env` prints the current list of environments in creation order. By default, garbage collection is executed before printing to reduce noise. This can be turned off by passing no-gc, i.e `(env no-gc)`
+`print-env` prints the content of the current environment.
 
 ```
-> (env)
+> (print-env)
 Environment for global: Env@10db4b000
     import = <function>, env *Env@0
     exit = <function>, env *Env@0
@@ -333,16 +309,21 @@ Environment for global: Env@10db4b000
     #? = #t, env *Env@0
     nil = nil, env *Env@0
     ...
-
-> (gc)
-Garbage collected 161 items
 ```
 
 The garbage collector runs periodically, though the criteria and extent are intentionally left undefined by this language reference.
 
-### lambda and λ
+### fun, lambda and λ
 
-The `lambda` function creates an anonymous function. Lambdas are usually bound to a variable, but can also be invoked directly or passed and returned as values.
+Creating functions in Bio can be done either with `fun` or `lambda`. The `fun` function is just a convenience macro that expands to a lambda definition.
+
+```scheme
+> (fun square (x) (* x x))
+> (square 5)
+25
+```
+
+Below is the equivalent lambda definition:
 
 ```scheme
 > (var square (lambda (x) (* x x)))
@@ -365,11 +346,33 @@ The lambda symbol can be used in place of the lambda identifier
 
 A lambda invocation has its own environment, and the parent environment is the one that existed when the lambda was defined. In other words, Bio is lexically scoped.
 
+### type
+
+A type expression is syntax sugar for functions returning their own environment. This is useful when making composite types.
+
+```scheme
+(type Point (x y)
+    (fun area () (* x y))
+)
+
+(var pt (Point 5 7))
+(print "Area:" (pt (area)) '\n)
+
+; Change x by passing the pt environment to set!
+(set! pt x 6)
+(print "Area:" (pt (area)) '\n)
+```
+
+Composite types can contain local variables and other functions, just like regular lambda expression.
+
 ### macro
 
-This function creates a macro expression. Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so, usually using quasi quotation.
+This function creates a macro.
 
-When executed, the body is evaluated, usually producing a quasiquote expression (which serves as a code template). The last expression is then evaluated again as the result. This causes the quasiquote expansion to be evaluated as code:
+Unlike lambdas, arguments are not evaluated when the macro is invoked. Instead, they're evaluated if and when the body does so. Note
+that eager evaluation of macro arguments can be forced by placed `&eval` in front of the formal parameter.
+ 
+When the macro is invoked, the body is evaluated. The returned expression (which represents Bio code) is then evaluated as the final result.
 
 ```scheme
 (var print-with-label (macro (label &rest values)
@@ -381,7 +384,52 @@ When executed, the body is evaluated, usually producing a quasiquote expression 
 Primes: 2 3 5 7
 ```
 
-A macro invocation has its own environment, and the parent environment is the current one.
+A macro invocation has its own environment, and the parent environment is the current one. This is different from lambdas whose parent environment is the one in which the lambda was defined.
+
+### macroexpand
+
+You can stop the evaluation of the code returned from a macro by wrapping it in `macroexpand`
+
+Consider a typical swap macro:
+
+```scheme
+(var swap (macro (a b)
+    `(let ((temp ,a))
+       (set! ,a ,b)
+       (set! ,b temp))))
+```
+
+Here's a typical usage example:
+
+```scheme
+(let ((x 3) (y 7))
+    (swap x y)
+    (print "Swapped:" x y "\n")
+)
+
+Swapped: 7 3
+```
+
+But now we wanna see how the macro is expanded as code instead:
+
+```scheme
+(let ((x 5) (y 8))
+    (print "Macro expansion:" (macroexpand (swap x y)) "\n")
+)
+
+Macro expansion: (let ((temp x)) (set! x y) (set! y temp))
+```
+
+Of course, you can store away the expansion for later invocation, or just evaluate the expansion directly:
+
+```scheme
+(let ((x 5) (y 8))
+    (eval (macroexpand (swap x y)))
+    (print "Swapped:" x y "\n")
+)
+
+Swapped: 8 5
+```
 
 ### self and environment lookups
 
@@ -404,6 +452,8 @@ A top-level `(self)` call will return the root environment as an expression:
 ```
 
 As you can see, when an environment is placed in the first position of a list, it changes which environment the following argument is looked up in.
+
+The argument can either be a symbol, or a list which will be interpreted in the context of the new environment.
 
 Use cases of `self` include modules, composite data types, polymorphic behavior, and enabling duck-typed interfaces/protocols.
 
@@ -451,7 +501,7 @@ The `quasiquote` function and the \` shorthand returns the argument unevaluated.
 Quasi quotation is commonly used to make templates in macros, but it has uses in regular functions as well.
 
 ### unquote
-In the context of a quasiquote, evaluate the argument. The shorthand version is `,` 
+In the context of a quasiquote, evaluate the argument. The shorthand version is `,`
 
 ### unquote-splicing
 In the context of a quasiquote, evaluate the elements of the list and place the result in the enclosing list. The shorthand version is `,@`
@@ -469,7 +519,7 @@ Evaluates all arguments, leaving the last evaluation as the result. If quote and
 
 ### apply
 
-Evaluates the given function with the given argument list. The last argument must be a list argument. Any preceding arguments are prepended to that list. This means that `(apply + 1 '(2 3))` is equivalent to `(apply + '(1 2 3))`. 
+Evaluates the given function with the given argument list. The last argument must be a list argument. Any preceding arguments are prepended to that list. This means that `(apply + 1 '(2 3))` is equivalent to `(apply + '(1 2 3))`.
 
 ```scheme
 > (apply + 5 2 1 '(10 20))
@@ -531,6 +581,26 @@ Here's the cond expression from `examples/fizzbuzz-cond.lisp`:
     ((= 0 y) (print "Buzz" "\n"))
     ((print i "\n"))
 )
+```
+### loop
+
+The `loop` function loops from n to m, or until &break is encountered
+
+The current iteration is optionally available in the given induction variable.
+
+```scheme
+; loops 10 times
+(loop '(0 10) (print 'Hi\n))
+
+; loops 10 times counting down
+(loop '(10 0) (print 'Hi\n))
+
+; loops 10 times, current iteration count goes into the idx variable
+; the current iteration is available in the idx variable (you can call it anything)
+(loop 'idx '(0 10) (print "Hi #" idx "\n"))
+
+; loops forever until &break is encountered
+(loop 'idx '() (print "Hi #" idx "\n") (if (= idx 4) &break))
 ```
 
 ### begin
@@ -755,20 +825,21 @@ Exits the process with an optional exit code (default is 0)
 (exit 1)
 ```
 
-### verbose
+### debug-verbose
 
 Toggles the verbosity flag. When on, some details are printed during evaluation, such as `nil` results and quasiquote expansions.
 
-### math.pi and math.e
+### Math pi and e
 
-The values of π and Euler's number respectively. Note that the `math.` prefix is just a naming convention.
+The values of π and Euler's number respectively. The symbol `π` is an alias to `pi` in the Math module.
 
-### math.floor
+### Math floor
 
 Returns the largest integer less than or equal to the argument.
 
 ```scheme
-(floor math.pi)
+(var math (Math))
+(math (floor (math pi)))
 3
 ```
 
@@ -882,8 +953,8 @@ Applies a function over one or more lists.
 Sorts a list using the supplied comparator function. The following example sorts the same list in ascending and descending order by passing `<` and `>` as the comparator functions. In the ascending example, we also filter out negative numbers:
 
 ```scheme
-> (filter 
-    (quicksort '(5 40 1 -3 2) <) 
+> (filter
+    (quicksort '(5 40 1 -3 2) <)
     (λ (x) (>= x 0)))
 (1 2 5 40)
 
@@ -920,6 +991,106 @@ The `list.iterate` function allows for convenient iteration of lists. The first 
 ))
 
 (2 4 6 8 10 12)
+```
+
+### reduce-with
+
+Signature: `(reduce-with initial fn op list)`
+
+Calls `op` on every item in `list`, but only after applying the function `fn` to the item.
+
+```scheme
+(reduce-with 0 (lambda (x) (+ x 1)) + '(1 2 3))
+
+9
+```
+
+This works like this:
+
+* start with the list `'(1 2 3)`
+* apply the lambda which adds 1 to each element, leaving `'(2 3 4)`
+* reduce to a single number `9` using `+` with the initial number `0`
+
+### each-pair
+
+Calls a supplied lambda with each consecutive pair in a list.
+
+```scheme
+; Pair iteration where each pair 1 5, 3 3 and 4 2 all sum to 6
+(each-pair '(1 5 3 3 4 2)
+    (λ (a b)
+        (assert (= 6 (+ a b)))))
+```
+
+### matrix functions
+
+```scheme
+; Multidimensional list (matrix) access
+(var M '(((10 11 12) (13 14 15)) ((16 17 18) (19 20 21))))
+(assert (= 20 (matrix-at M 1 1 1)))
+(assert (= nil (matrix-at M 1 1 100)))
+(assert (= '(10 11 12) (matrix-at M 0 0)))
+
+(var M2 '( (1 2 3 4) (a b c d)))
+(assert (= 'c (matrix-at M2 1 2)))
+
+; Update matrix; the old value is returned
+(assert (= 'c (matrix-set! M2 'x 1 2)))
+(assert (= 'x (matrix-at M2 1 2)))
+
+; Trying to set a value outside the matrix returns an error
+(assert (error? (try (matrix-set! M2 0 200 2) #t #!)))
+```
+
+### hashmap
+
+The are numerous hashmap related functions available:
+
+```scheme
+(var mymap (hashmap.new ("1" 2) (3 4)))
+(assert (hashmap? mymap))
+(assert (= (len mymap) 2))
+(hashmap.put mymap 5 6)
+(hashmap.put mymap 7 "Initial entry")
+(var initial-entry (hashmap.put mymap 7 "Another entry"))
+(assert (= initial-entry "Initial entry"))
+(assert (= (len mymap) 4))
+(assert (= (hashmap.get mymap 7) "Another entry"))
+(hashmap.remove mymap 7)
+(assert (= (hashmap.get mymap 7) nil))
+(assert (= (len mymap) 3))
+
+(var keys '())
+(var vals '())
+(hashmap.iterate mymap (λ (k v)
+    (item-append! keys k)
+    (item-append! vals v)
+))
+(assert (= '(1 3 5) keys))
+(assert (= '(2 4 6) vals))
+
+(var count-removed (hashmap.clear mymap))
+(assert (= count-removed 3))
+(assert (= (len mymap) 0))
+
+; k -> '()
+(var hmlist (hashmap.new))
+(hashmap.append! hmlist 'a 1)
+(hashmap.append! hmlist 'a 2)
+(assert (= (hashmap.get hmlist 'a) '(1 2)))
+
+; The 'a entry exists, so the lambda is called, which updates the list
+(hashmap.put-or-apply hmlist 'a 3 (λ (list)
+    (assert (= list '(1 2)))
+    (item-append! list 3)
+))
+
+(assert (= (hashmap.get hmlist 'a) '(1 2 3)))
+(assert (= (hashmap.maybe-put hmlist 'a '(5 5 5)) '(1 2 3)))
+(assert (= (hashmap.maybe-put hmlist 'b '(5 5 5)) '(5 5 5)))
+
+(assert (contains? hmlist 'a))
+(assert (not (contains? hmlist 'not-there)))
 ```
 
 ### io.read-number
@@ -1093,64 +1264,48 @@ A Bio module is a module *by convention*, somewhat similar to classical Javascri
     - module-version, a list of numbers signifying major, major, and patch
     - module-description, an *optional* description of the module
 
+## Modules
+A Bio module is a module *by convention*, somewhat similar to classical Javascript modules:
+
+1. A `mod-<modulename>.lisp` file with the contents wrapped in a lambda call
+2. The last expression is `(self)`, making the environment available to the importer
+3. The following definitions are available:
+    - module-name, a string describing the module
+    - module-version, a list of numbers signifying major, major, and patch
+    - module-description, an *optional* description of the module
+
 ### Module example
 
-Below is `mod-point.lisp`, which in this example is placed in a subdirectory called `modules`
+The examples directory contains a sample module called `mod-pos.lisp`
+
+To use the module in a REPL:
 
 ```scheme
-((lambda ()
-    ; Functions shared between types are actually macros so their parent 
-    ; environment is the calling environment; this way x and y will be found
-    (var generic-update (macro (new-x new-y)
-        (set! x new-x)
-        (set! y new-y)
-        nil
-    ))
+bio>  (var Point (import "examples/mod-pos.lisp"))
+<env>
 
-    ; A point datatype with regular formatting
-    (var new-point (lambda (x y)
-        (var update generic-update)
-        (var as-string (lambda ()
-            (string x " " y)
-        ))
-        (self)
-    ))
+bio>  (var pt (Point (new-point 2 5.4)))
+<env>
 
-    ; A version with longitude and latitude formatting
-    (var new-location (lambda (x y)
-        (var update generic-update)
-        (var as-string (lambda ()
-            (string 
-                (math.abs x) (if (< x 0) "° S" "° N")
-                "  "
-                (math.abs y) (if (< y 0) "° W" "° E"))
-        ))
-        (self)
-    ))
+bio> (pt x)
+2
 
-    (var module-name "Position Module")
-    (var module-version '(1 0 0))
-    (self)
-))
+bio> (pt y)
+5.4
 
+bio> (pt (as-string))
+2 5.4
 
-```
+bio> (var loc (Point (new-location 100.5 200.5)))
+<env>
 
-To use the module:
+bio> (loc x)
+100.5
 
-```scheme
-(var Point (import "modules/mod-point.lisp"))
+bio> (loc y)
+200.5
 
-(var pt (Point new-location 24.5 69.2))
-
-(pt x)
-24.5
-
-((pt as-string))
-24.5 °N  69.2 °E
-
-; Call update in two different ways
-((pt update) 25.4 70.5)
-(pt (update 25.4 70.5))
+bio> (loc (as-string))
+100.5° N  200.5° E
 
 ```
