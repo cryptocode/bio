@@ -1,8 +1,8 @@
 <img src="https://user-images.githubusercontent.com/34946442/143932794-213c6eaa-76ca-4f98-985f-345d1fc8e925.png" width=100 height=100>
 
-Bio is a Lisp dialect written in Zig. Features include macros, garbage collection, error handling, a module facility, and a small standard library.
+Bio is a Lisp dialect written in Zig. Features include macros, garbage collection, error handling, a module facility, a repl, and a small standard library.
 
-*NOTE: Bio is the result of a [Let's-write-a-Lisp article](https://cryptocode.github.io/blog/docs/bio-introduction/) and is no longer maintained beyond upgrading to new Zig versions.*
+*NOTE: Bio is the result of a [Let's-write-a-Lisp article](https://cryptocode.github.io/blog/docs/bio-introduction/) and is currently not maintained beyond occasionally upgrading to new Zig versions. Currently targets Zig v.0.16.*
 
 Example:
 
@@ -33,7 +33,7 @@ Area: 35
 
 # Building and running
 
-Clone the repository and cd to the root directory.
+Clone the repository and cd to the project directory.
 
 **Build**
 

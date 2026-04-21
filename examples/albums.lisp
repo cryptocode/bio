@@ -4,14 +4,12 @@
 (var albums '())
 
 (var print-menu (lambda ()
-    (print "1: Add    2: Find by name    3: List all    4: Exit\n")
-))
+    (print "1: Add    2: Find by name    3: List all    4: Exit\n")))
 
 (var print-heading (lambda (heading)
     (print "\n------------------------------------\n")
     (print heading "\n")
-    (print "------------------------------------\n")
-))
+    (print "------------------------------------\n")))
 
 ; Add new album to database
 (var album.add (lambda ()
@@ -27,8 +25,7 @@
     ; Append to album database file
     (var dat (io.open-file "albums.dat"))
     (io.write-line dat (string `(set! albums (append albums (list (list ,(double-quote album-name) ,rating))))))
-    (io.close-file dat)
-))
+    (io.close-file dat)))
 
 ; List all albums
 (var album.list (lambda ()
@@ -37,16 +34,11 @@
             (print-heading "All albums")
             (var sorted-album-list (quicksort albums (lambda (first second)
                 ; Compare album names
-                (< (car first) (car second))
-            )))
+                (< (car first) (car second)))))
             (each sorted-album-list (lambda (album)
-                (album.print-entry album)
-            ))
-        )
-        (print "\nThere are no albums in the database\n")
-    )
-    (print "\n")
-))
+                (album.print-entry album))))
+        (print "\nThere are no albums in the database\n"))
+    (print "\n")))
 
 ; Find an album by name
 (var album.find (lambda ()
@@ -56,18 +48,13 @@
         (if (= to-find (car album))
             (begin
                 (print-heading "Found a matching album:")
-                (album.print-entry album)
-            )
-        )
-    ))
-    (print "\n")
-))
+                (album.print-entry album)))))
+    (print "\n")))
 
 (var album.print-entry (lambda (album)
     (print "Name   : " (car album) "\n")
     (print "Rating : " (cadr album) "\n")
-    (print "------------------------------------\n")
-))
+    (print "------------------------------------\n")))
 
 (print "\nWelcome to the Bio Album Database\n \n")
 
@@ -77,9 +64,7 @@
 (while keep-reading
     (try (io.read-line dat)
         (eval-string #value)
-        (set! keep-reading #f)
-    )
-)
+        (set! keep-reading #f)))
 (io.close-file dat)
 
 ; Menu loop
@@ -89,6 +74,4 @@
         (if (= action 1) (album.add))
         (if (= action 2) (album.find))
         (if (= action 3) (album.list))
-        (if (= action 4) (exit 0))
-    )
-)
+        (if (= action 4) (exit 0))))

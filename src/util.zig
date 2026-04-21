@@ -54,10 +54,8 @@ pub fn requireType(ev: *interpreter.Interpreter, expr: *Expr, etype: ExprType) !
 
 // Copy bytes from a reader to a writer, until EOF
 pub fn copyBytes(reader: anytype, writer: anytype) !void {
-    var buffered_reader = std.io.bufferedReader(reader);
-    var instream = buffered_reader.reader();
     read_loop: while (true) {
-        const byte = instream.readByte() catch |err| switch (err) {
+        const byte = reader.takeByte() catch |err| switch (err) {
             error.EndOfStream => break :read_loop,
             else => return err,
         };

@@ -6,10 +6,7 @@
                 ((and (= 0 x) (= 0 y)) (print "FizzBuzz" "\n"))
                 ((= 0 x) (print "Fizz" "\n"))
                 ((= 0 y) (print "Buzz" "\n"))
-                ((print i "\n"))
-            )
-        (fizzbuzz (+ i 1) n))
-    )
-))
+                ((print i "\n")))
+        (fizzbuzz (+ i 1) n)))))
 
 (fizzbuzz 1 20)

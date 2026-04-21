@@ -66,13 +66,13 @@ pub fn @"io.open-file"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        const file = try gc.allocator().create(std.fs.File);
-        file.* = std.fs.cwd().createFile(filename_expr.val.sym, .{ .truncate = false, .read = true }) catch |err| {
+        const bio_file = try gc.allocator().create(BioFile);
+        bio_file.* = .{ .file = std.Io.Dir.cwd().createFile(ev.io, filename_expr.val.sym, .{ .truncate = false, .read = true }) catch |err| {
             try ev.printErrorFmt(filename_expr, "Could not open file: {s}", .{ast.errString(err)});
             return err;
-        };
+        } };
         var expr = try Expr.create(true);
-        expr.val = ExprValue{ .any = @intFromPtr(file) };
+        expr.val = ExprValue{ .any = @intFromPtr(bio_file) };
         return expr;
     }
     return ast.getIntrinsic(.nil);
@@ -83,8 +83,8 @@ pub fn @"io.close-file"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerr
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
-    const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
-    file.close();
+    const bio_file = @as(*BioFile, @ptrFromInt(file_ptr.val.any));
+    bio_file.file.close(ev.io);
     return ast.getIntrinsic(.nil);
 }
 
@@ -93,36 +93,42 @@ pub fn @"io.read-byte"(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr 
     try requireExactArgCount(1, args);
     const file_ptr = try ev.eval(env, args[0]);
     try requireType(ev, file_ptr, ExprType.any);
-    const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
-    if (file.reader().readByte()) |byte| {
+    const bio_file = @as(*BioFile, @ptrFromInt(file_ptr.val.any));
+    var read_buffer: [1]u8 = undefined;
+    var reader = bio_file.file.reader(ev.io, &read_buffer);
+    reader.seekTo(bio_file.read_pos) catch {
+        return try ast.makeError(try ast.makeAtomByDuplicating("Could not read from file"));
+    };
+    if (reader.interface.takeByte()) |byte| {
+        bio_file.read_pos = reader.logicalPos();
         return ast.makeAtomByDuplicating(&.{byte});
     } else |e| switch (e) {
-        error.EndOfStream => return try ast.makeError(try ast.makeAtomByDuplicating("EOF")),
-        else => return try ast.makeError(try ast.makeAtomByDuplicating("Could not read from file")),
+        error.EndOfStream => {
+            bio_file.read_pos = reader.logicalPos();
+            return try ast.makeError(try ast.makeAtomByDuplicating("EOF"));
+        },
+        else => {
+            bio_file.read_pos = reader.logicalPos();
+            return try ast.makeError(try ast.makeAtomByDuplicating("Could not read from file"));
+        },
     }
 }
 
 /// Reads a line from the given file, or from stdin if no argument is given
 pub fn @"io.read-line"(ev: *Interpreter, env: *Env, args: []const *Expr) !*Expr {
-    var reader: std.fs.File.Reader = std.io.getStdIn().reader();
-    if (args.len > 0) {
+    const maybe_line = (if (args.len > 0) blk: {
         try requireExactArgCount(1, args);
         const file_ptr = try ev.eval(env, args[0]);
         try requireType(ev, file_ptr, ExprType.any);
-        const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
-
-        reader = file.reader();
-    }
-
-    if (reader.readUntilDelimiterOrEofAlloc(gc.allocator(), '\n', std.math.maxInt(usize))) |maybe| {
-        if (maybe) |line| {
-            return ast.makeAtomAndTakeOwnership(line);
-        } else {
-            return try ast.makeError(try ast.makeAtomByDuplicating("EOF"));
-        }
-    } else |_| {
+        const bio_file = @as(*BioFile, @ptrFromInt(file_ptr.val.any));
+        break :blk bio_file.readline(ev.io, gc.allocator());
+    } else readLineFromReader(gc.allocator(), &ev.stdin_reader.interface)) catch {
         return try ast.makeError(try ast.makeAtomByDuplicating("Could not read from file"));
+    };
+    if (maybe_line) |line| {
+        return ast.makeAtomAndTakeOwnership(line);
     }
+    return try ast.makeError(try ast.makeAtomByDuplicating("EOF"));
 }
 
 /// Appends a line to the file, or to stdout if no argument is given
@@ -131,19 +137,22 @@ pub fn @"io.write-line"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerr
     const line_to_write = try ev.eval(env, args[args.len - 1]);
     try requireType(ev, line_to_write, ExprType.sym);
 
-    var writer: std.fs.File.Writer = std.io.getStdOut().writer();
     if (args.len > 1) {
         try requireExactArgCount(2, args);
         const file_ptr = try ev.eval(env, args[0]);
         try requireType(ev, file_ptr, ExprType.any);
-        const file = @as(*std.fs.File, @ptrFromInt(file_ptr.val.any));
-        try file.seekFromEnd(0);
-
-        writer = file.writer();
+        const bio_file = @as(*BioFile, @ptrFromInt(file_ptr.val.any));
+        const stat = try bio_file.file.stat(ev.io);
+        var write_buffer: [256]u8 = undefined;
+        var writer = bio_file.file.writer(ev.io, &write_buffer);
+        try writer.seekTo(stat.size);
+        try writer.interface.writeAll(line_to_write.val.sym);
+        try writer.interface.writeByte('\n');
+        try writer.interface.flush();
+        return ast.getIntrinsic(.nil);
     }
 
-    try writer.writeAll(line_to_write.val.sym);
-    _ = try writer.write("\n");
+    try stdoutPrint(ev.io, "{s}\n", .{line_to_write.val.sym});
     return ast.getIntrinsic(.nil);
 }
 
@@ -152,24 +161,34 @@ pub fn import(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireExactArgCount(1, args);
     const filename_expr = try ev.eval(env, args[0]);
     if (filename_expr.val == ExprType.sym) {
-        var out: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-        const path = std.fs.realpath(filename_expr.val.sym, &out) catch |err| switch (err) {
-            error.FileNotFound => {
-                try ev.printErrorFmt(filename_expr, "File not found: {s}", .{filename_expr.val.sym});
-                return ExprErrors.AlreadyReported;
-            },
-            else => return err,
-        };
+        const input_path = filename_expr.val.sym;
+        const path = if (std.fs.path.isAbsolute(input_path))
+            try gc.allocator().dupe(u8, input_path)
+        else
+            try std.fs.path.join(gc.allocator(), &.{ try std.process.currentPathAlloc(ev.io, gc.allocator()), input_path });
 
-        const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
+        const file = if (std.fs.path.isAbsolute(input_path))
+            std.Io.Dir.openFileAbsolute(ev.io, path, .{})
+        else
+            std.Io.Dir.cwd().openFile(ev.io, input_path, .{}) catch |err| {
+                if (err == error.FileNotFound) {
+                    try ev.printErrorFmt(filename_expr, "File not found: {s}", .{filename_expr.val.sym});
+                    return ExprErrors.AlreadyReported;
+                }
+                try ev.printErrorFmt(filename_expr, "Could not open file: {s}", .{ast.errString(err)});
+                return err;
+            };
+
+        var resolved_file = file catch |err| {
             try ev.printErrorFmt(filename_expr, "Could not open file: {s}", .{ast.errString(err)});
             return err;
         };
-        defer file.close();
+        defer resolved_file.close(ev.io);
 
-        const reader = file.reader();
+        var read_buffer: [4096]u8 = undefined;
+        var reader = resolved_file.reader(ev.io, &read_buffer);
         var res: *Expr = ast.getIntrinsic(.nil);
-        const expr_list = try ast.Parser.parseMultipleExpressionsFromReader(reader, try gc.allocator().dupe(u8, path));
+        const expr_list = try ast.Parser.parseMultipleExpressionsFromReader(&reader.interface, try gc.allocator().dupe(u8, path));
         for (expr_list.val.lst.items) |expr| {
             res = try ev.eval(ev.env, expr);
             if (ev.has_errors) break;
@@ -190,7 +209,7 @@ pub fn @"debug-verbose"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerr
     _ = &.{ env, args };
     ev.verbose = !ev.verbose;
     const bool_str = if (ev.verbose) "on " else "off";
-    try std.io.getStdOut().writer().print("Verbosity is now {s}\n", .{bool_str});
+    try stdoutPrint(ev.io, "Verbosity is now {s}\n", .{bool_str});
     return ast.getIntrinsic(.nil);
 }
 
@@ -212,28 +231,33 @@ fn render(ev: *Interpreter, env: *Env, expr: *Expr) ![]u8 {
 
 /// Implements (string expr...), i.e. rendering of expressions as strings
 pub fn string(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
-    var builder = std.ArrayList(u8).init(gc.allocator());
-    defer builder.deinit();
-    const writer = builder.writer();
+    var out: std.Io.Writer.Allocating = .init(gc.allocator());
+    defer out.deinit();
+    const writer = &out.writer;
 
     for (args) |expr| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
         try writer.writeAll(rendered);
     }
-    return ast.makeAtomByDuplicating(builder.items);
+    return ast.makeAtomByDuplicating(try out.toOwnedSlice());
 }
 
 /// Implements (print expr...)
 pub fn print(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
+    var out: std.Io.Writer.Allocating = .init(gc.allocator());
+    defer out.deinit();
+    const writer = &out.writer;
+
     for (args, 0..) |expr, index| {
         const value = try ev.eval(env, expr);
         const rendered = try render(ev, env, value);
-        try std.io.getStdOut().writer().print("{s}", .{rendered});
+        try writer.print("{s}", .{rendered});
         if (index + 1 < args.len) {
-            try std.io.getStdOut().writer().print(" ", .{});
+            try writer.writeAll(" ");
         }
     }
+    try stdoutWriteAll(ev.io, try out.toOwnedSlice());
     return ast.getIntrinsic(.nil);
 }
 
@@ -262,26 +286,26 @@ pub fn @"print-env"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*
     _ = args;
 
     // Print out all environments, including which environment is the parent.
-    try std.io.getStdOut().writer().print("Environment for {s}: {*}\n", .{ env.name, env });
+    try stdoutPrint(ev.io, "Environment for {s}: {*}\n", .{ env.name, env });
 
     var iter = env.map.iterator();
     while (iter.next()) |item| {
-        try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
-        try std.io.getStdOut().writer().print("{s} = ", .{item.key_ptr.*.val.sym});
-        try item.value_ptr.*.print();
+        try stdoutWriteByteNTimes(ev.io, ' ', 4);
+        try stdoutPrint(ev.io, "{s} = ", .{item.key_ptr.*.val.sym});
+        try item.value_ptr.*.print(ev.io);
         if (ev.verbose) {
-            try std.io.getStdOut().writer().print(", env {*}", .{item.value_ptr.*.env});
+            try stdoutPrint(ev.io, ", env {*}", .{item.value_ptr.*.env});
         }
-        try std.io.getStdOut().writer().print("\n", .{});
+        try stdoutPrint(ev.io, "\n", .{});
     }
 
     // TODO: recursively print parents if first argument is #t
     if (env.parent) |parent| {
-        try std.io.getStdOut().writer().writeByteNTimes(' ', 4);
-        try std.io.getStdOut().writer().print("Parent environment is {s}: {*}\n", .{ parent.name, parent });
+        try stdoutWriteByteNTimes(ev.io, ' ', 4);
+        try stdoutPrint(ev.io, "Parent environment is {s}: {*}\n", .{ parent.name, parent });
     }
 
-    try std.io.getStdOut().writer().print("\n", .{});
+    try stdoutPrint(ev.io, "\n", .{});
     return ast.getIntrinsic(.nil);
 }
 
@@ -569,15 +593,15 @@ pub fn quasiquote(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Ex
     };
 
     if (ev.verbose) {
-        try args[0].print();
-        try std.io.getStdOut().writer().print("\n ^ quasiquote pre-expand\n", .{});
+        try args[0].print(ev.io);
+        try stdoutPrint(ev.io, "\n ^ quasiquote pre-expand\n", .{});
     }
 
     const res = try qq_expander.expand(ev, env, args[0]);
 
     if (ev.verbose) {
-        try res.print();
-        try std.io.getStdOut().writer().print("\n ^ quasiquote post-expand\n", .{});
+        try res.print(ev.io);
+        try stdoutPrint(ev.io, "\n ^ quasiquote post-expand\n", .{});
     }
 
     return res;
@@ -817,7 +841,7 @@ pub fn @"std-math-pow"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
 
 pub fn @"std-time-now"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     _ = &.{ ev, env, args };
-    return ast.makeNumExpr(@as(f64, @floatFromInt(std.time.milliTimestamp())));
+    return ast.makeNumExpr(@as(f64, @floatFromInt(@divTrunc(std.Io.Clock.real.now(ev.io).nanoseconds, std.time.ns_per_ms))));
 }
 
 /// Checks for presence by value comparison in hashmaps, lists and symbols; returns #t or #f accordingly
@@ -916,14 +940,14 @@ pub fn as(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
                 return ast.makeSymbol(val, true);
             },
             ExprType.lst => |lst| {
-                var res = std.ArrayList(u8).init(gc.allocator());
-                var exprWriter = res.writer();
-                defer res.deinit();
+                var out: std.Io.Writer.Allocating = .init(gc.allocator());
+                defer out.deinit();
+                const writer = &out.writer;
                 for (lst.items) |item| {
                     const str = try item.toStringAlloc();
-                    try exprWriter.writeAll(str);
+                    try writer.writeAll(str);
                 }
-                return ast.makeAtomByDuplicating(res.items);
+                return ast.makeAtomByDuplicating(try out.toOwnedSlice());
             },
             else => return ast.getIntrinsic(.nil),
         }
@@ -950,7 +974,7 @@ pub fn @"string.split"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerro
     try requireType(ev, needle, ExprType.sym);
 
     const lst = try ast.makeListExpr(null);
-    var it = std.mem.tokenize(u8, input.val.sym, needle.val.sym);
+    var it = std.mem.tokenizeAny(u8, input.val.sym, needle.val.sym);
     while (it.next()) |item| {
         if (item.len == 0) {
             try lst.val.lst.append(ast.getIntrinsic(.nil));
@@ -1159,7 +1183,7 @@ pub fn @"std-hashmap-new"(ev: *Interpreter, env: *Env, args: []const *Expr) anye
     var hmap = try ast.makeHashmapExpr(null);
     for (args) |arg| {
         try requireType(ev, arg, ExprType.lst);
-        try hmap.val.map.put(try ev.eval(env, arg.val.lst.items[0]), try ev.eval(env, arg.val.lst.items[1]));
+        try hmap.val.map.put(gc.allocator(), try ev.eval(env, arg.val.lst.items[0]), try ev.eval(env, arg.val.lst.items[1]));
     }
     return hmap;
 }
@@ -1184,7 +1208,7 @@ pub fn @"std-hashmap-put"(ev: *Interpreter, env: *Env, args: []const *Expr) anye
     const k = try ev.eval(env, args[1]);
     const v = try ev.eval(env, args[2]);
     const previous = m.val.map.get(k);
-    try m.val.map.put(k, v);
+    try m.val.map.put(gc.allocator(), k, v);
     return if (previous) |p| p else ast.getIntrinsic(.nil);
 }
 
@@ -1215,7 +1239,7 @@ pub fn @"std-hashmap-clear"(ev: *Interpreter, env: *Env, args: []const *Expr) an
     const m = try ev.eval(env, args[0]);
     try requireType(ev, m, ExprType.map);
     const count = try ast.makeNumExpr(@as(f64, @floatFromInt(m.val.map.count())));
-    m.val.map.clearAndFree();
+    m.val.map.clearAndFree(gc.allocator());
     return count;
 }
 
@@ -1227,7 +1251,7 @@ pub fn clone(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Expr {
     try requireType(ev, m, ExprType.map);
 
     var hmap = try ast.makeHashmapExpr(null);
-    hmap.val.map = try m.val.map.clone();
+    hmap.val.map = try m.val.map.clone(gc.allocator());
     return hmap;
 }
 
@@ -1420,4 +1444,64 @@ pub fn @"unset!"(ev: *Interpreter, env: *Env, args: []const *Expr) anyerror!*Exp
     try requireType(ev, args[0], ExprType.sym);
     _ = env.replace(args[0], null) catch return ast.getIntrinsic(.nil);
     return ast.getIntrinsic(.nil);
+}
+
+const BioFile = struct {
+    file: std.Io.File,
+    read_pos: u64 = 0,
+
+    fn readline(bio_file: *BioFile, io: std.Io, allocator: std.mem.Allocator) !?[]u8 {
+        var read_buffer: [1024]u8 = undefined;
+        var reader = bio_file.file.reader(io, &read_buffer);
+        try reader.seekTo(bio_file.read_pos);
+        const line = readLineFromReader(allocator, &reader.interface) catch |err| {
+            bio_file.read_pos = reader.logicalPos();
+            return err;
+        };
+        bio_file.read_pos = reader.logicalPos();
+        return line;
+    }
+};
+
+fn stdoutPrint(io: std.Io, comptime fmt: []const u8, args: anytype) !void {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.File.stdout().writer(io, &buffer);
+    try writer.interface.print(fmt, args);
+    try writer.interface.flush();
+}
+
+fn stdoutWriteAll(io: std.Io, bytes: []const u8) !void {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.File.stdout().writer(io, &buffer);
+    try writer.interface.writeAll(bytes);
+    try writer.interface.flush();
+}
+
+fn stdoutWriteByteNTimes(io: std.Io, byte: u8, count: usize) !void {
+    var remaining = count;
+    var chunk: [1024]u8 = undefined;
+    @memset(&chunk, byte);
+    while (remaining > 0) {
+        const chunk_len = @min(remaining, chunk.len);
+        try stdoutWriteAll(io, chunk[0..chunk_len]);
+        remaining -= chunk_len;
+    }
+}
+
+fn readLineFromReader(allocator: std.mem.Allocator, reader: *std.Io.Reader) !?[]u8 {
+    var line = std.array_list.Managed(u8).init(allocator);
+    errdefer line.deinit();
+
+    while (true) {
+        const byte = reader.takeByte() catch |err| switch (err) {
+            error.EndOfStream => {
+                if (line.items.len == 0) return null;
+                return try line.toOwnedSlice();
+            },
+            else => return err,
+        };
+
+        if (byte == '\n') return try line.toOwnedSlice();
+        try line.append(byte);
+    }
 }

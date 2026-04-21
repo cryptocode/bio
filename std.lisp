@@ -152,8 +152,7 @@
         (append &mut params (list (car item)))
         (append &mut args (list (eval (cadr item))))))
 
-    `((lambda (,@params) ,@/body) ,@args)
-))
+    `((lambda (,@params) ,@/body) ,@args)))
 
 (var while (macro (/predicate &rest /body)
     `((loop '()

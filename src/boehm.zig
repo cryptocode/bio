@@ -78,26 +78,31 @@ pub fn setLeakDetection(enabled: bool) void {
 
 /// Zig allocator using Boehm GC
 pub const BoehmGcAllocator = struct {
-    fn alloc(_: *anyopaque, len: usize, log2_align: u8, return_address: usize) ?[*]u8 {
+    fn alloc(_: *anyopaque, len: usize, alignment: std.mem.Alignment, return_address: usize) ?[*]u8 {
         _ = return_address;
         assert(len > 0);
-        const alignment = @as(usize, 1) << @as(Allocator.Log2Align, @intCast(log2_align));
-        const raw = gc.GC_memalign(alignment, len);
+        const raw = gc.GC_memalign(alignment.toByteUnits(), len);
         return @as([*]u8, @ptrCast(raw));
     }
 
-    fn resize(_: *anyopaque, buf: []u8, log2_buf_align: u8, new_len: usize, return_address: usize) bool {
-        _ = .{ log2_buf_align, return_address, buf, new_len };
+    fn resize(_: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, return_address: usize) bool {
+        _ = .{ buf, alignment, new_len, return_address };
         return false;
     }
 
-    fn free(_: *anyopaque, buf: []u8, log2_buf_align: u8, return_address: usize) void {
-        _ = .{ buf, log2_buf_align, return_address };
+    fn remap(_: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, return_address: usize) ?[*]u8 {
+        _ = .{ buf, alignment, new_len, return_address };
+        return null;
+    }
+
+    fn free(_: *anyopaque, buf: []u8, alignment: std.mem.Alignment, return_address: usize) void {
+        _ = .{ buf, alignment, return_address };
     }
 };
 
 const gc_allocator_vtable = Allocator.VTable{
     .alloc = BoehmGcAllocator.alloc,
     .resize = BoehmGcAllocator.resize,
+    .remap = BoehmGcAllocator.remap,
     .free = BoehmGcAllocator.free,
 };

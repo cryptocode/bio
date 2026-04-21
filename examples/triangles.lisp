@@ -7,16 +7,11 @@
                     (map (lambda (x) (append spaces x spaces)) acc)
                     (map (lambda (x) (append x (list " ") x)) acc))
                 (append spaces spaces)
-                (- n 1)
-            )
-        )
-    ))
+                (- n 1)))))
 
     (map
         (lambda (x) (print (as symbol x) "\n"))
-        (generator (list "^") (list " ") n)
-    )
-))
+        (generator (list "^") (list " ") n))))
 
 ; Prints a Sierpinksi Triangle of size 5; change size at your leisure
 (sierpinski 5)

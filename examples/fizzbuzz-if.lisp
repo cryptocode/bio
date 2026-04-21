@@ -5,9 +5,6 @@
             (if (= 0 y) (print "Buzz"))
             (if (and (!= 0 x) (!= 0 y)) (print i))
             (print "\n")
-            (fizzbuzz (+ i 1) n)
-        )
-    )
-))
+            (fizzbuzz (+ i 1) n)))))
 
 (fizzbuzz 1 20)

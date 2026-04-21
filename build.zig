@@ -5,10 +5,15 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Boehm GC
-    const gc = b.addStaticLibrary(.{
-        .name = "gc",
+    const gc_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
+    });
+    const gc = b.addLibrary(.{
+        .name = "gc",
+        .linkage = .static,
+        .root_module = gc_module,
     });
     {
         const cflags = [_][]const u8{"-DNO_EXECUTE_PERMISSION"};
@@ -19,35 +24,37 @@ pub fn build(b: *std.Build) void {
             "mallocx.c",
         };
 
-        gc.linkLibC();
-        if (target.result.isDarwin()) {
-            gc.linkFramework("CoreServices");
+        if (target.result.os.tag.isDarwin()) {
+            gc.root_module.linkFramework("CoreServices", .{});
         }
-        gc.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
+        gc.root_module.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
         inline for (libgc_srcs) |src| {
-            gc.addCSourceFile(.{ .file = b.path("deps/github.com/ivmai/bdwgc/" ++ src), .flags = &cflags });
+            gc.root_module.addCSourceFile(.{ .file = b.path("deps/github.com/ivmai/bdwgc/" ++ src), .flags = &cflags });
         }
 
         const gc_step = b.step("libgc", "build libgc");
         gc_step.dependOn(&gc.step);
     }
 
-    const exe = b.addExecutable(.{
-        .name = "bio",
+    const exe_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
-    exe.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
-    exe.linkLibC();
-    exe.linkLibrary(gc);
+    const exe = b.addExecutable(.{
+        .name = "bio",
+        .root_module = exe_module,
+    });
+    exe.root_module.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
+    exe.root_module.linkLibrary(gc);
 
     if (target.result.os.tag != .windows) {
-        exe.addCSourceFile(.{ .file = b.path("deps/linenoise.c"), .flags = &[_][]const u8{ "-std=c99", "-Wno-everything" } });
-        exe.addIncludePath(b.path("deps"));
+        exe.root_module.addCSourceFile(.{ .file = b.path("deps/linenoise.c"), .flags = &[_][]const u8{ "-std=c99", "-Wno-everything" } });
+        exe.root_module.addIncludePath(b.path("deps"));
     }
 
-    var inst = b.addInstallArtifact(exe, .{});
+    const inst = b.addInstallArtifact(exe, .{});
     b.getInstallStep().dependOn(&inst.step);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -59,14 +66,17 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    var tests = b.addTest(.{
+    const test_module = b.createModule(.{
         .root_source_file = b.path("src/tests.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
-    tests.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
-    tests.linkLibC();
-    tests.linkLibrary(gc);
+    const tests = b.addTest(.{
+        .root_module = test_module,
+    });
+    tests.root_module.addIncludePath(b.path("deps/github.com/ivmai/bdwgc/include"));
+    tests.root_module.linkLibrary(gc);
 
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run tests");

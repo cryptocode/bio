@@ -35,17 +35,14 @@
     (var generic-update (macro (new-x new-y)
         (set! x new-x)
         (set! y new-y)
-        nil
-    ))
+        nil))
 
     ; A point datatype with regular formatting
     (var new-point (lambda (x y)
         (var update generic-update)
         (var as-string (lambda ()
-            (string x " " y)
-        ))
-        (self)
-    ))
+            (string x " " y)))
+        (self)))
 
     ; A version with longitude and latitude formatting
     (var new-location (lambda (x y)
@@ -54,10 +51,8 @@
             (string
                 (math.abs x) (if (< x 0) "° S" "° N")
                 "  "
-                (math.abs y) (if (< y 0) "° W" "° E"))
-        ))
-        (self)
-    ))
+                (math.abs y) (if (< y 0) "° W" "° E"))))
+        (self)))
 
     (var test (lambda ()
         (var new-york (new-location 40.7554351 -73.9981619))
@@ -76,10 +71,8 @@
         (print "Sidney       :" ((sidney as-string)) "\n")
 
         (sidney (update 0 0))
-        (print "Sidney zeroed:" ((sidney as-string)) "\n")
-    ))
+        (print "Sidney zeroed:" ((sidney as-string)) "\n")))
 
     (var module-name "Position Module")
     (var module-version '(1 0 0))
-    (self)
-))
+    (self)))

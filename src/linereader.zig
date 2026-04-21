@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const target = @import("builtin").target;
 const gc = @import("boehm.zig");
 
@@ -7,88 +6,51 @@ const is_windows = target.os.tag == .windows;
 const linenoise = @cImport({
     if (!is_windows) {
         @cInclude("stddef.h");
+        @cInclude("stdlib.h");
         @cInclude("linenoise.h");
     }
 });
 
-/// Linenoise wrapper with a Reader interface
-const Linenoise = struct {
-    line: ?[:0]u8 = null,
-    index: usize = 0,
-    remaining: usize = 0,
-    eof_next: bool = false,
-    prompt: []const u8 = "",
+fn readLineFromFileAlloc(io: std.Io, allocator: std.mem.Allocator, file: std.Io.File) !?[]u8 {
+    var read_buffer: [256]u8 = undefined;
+    var reader = file.reader(io, &read_buffer);
+    var line = std.array_list.Managed(u8).init(allocator);
+    errdefer line.deinit();
 
-    fn init() Linenoise {
-        return .{};
+    while (true) {
+        const byte = reader.interface.takeByte() catch |err| switch (err) {
+            error.EndOfStream => {
+                if (line.items.len == 0) return null;
+                return try line.toOwnedSlice();
+            },
+            else => return err,
+        };
+
+        if (byte == '\n') return try line.toOwnedSlice();
+        try line.append(byte);
+    }
+}
+
+pub fn readLine(allocator: std.mem.Allocator, io: std.Io, prompt: []const u8) !?[]u8 {
+    if (!is_windows) {
+        const c_line = linenoise.linenoise(prompt.ptr);
+        if (c_line == null) return null;
+        defer std.c.free(c_line);
+        return try allocator.dupe(u8, std.mem.span(c_line));
     }
 
-    pub fn hidePrompt(self: *Linenoise) void {
-        self.prompt = "";
+    if (prompt.len > 0) {
+        var buffer: [4096]u8 = undefined;
+        var writer = std.Io.File.stdout().writer(io, &buffer);
+        try writer.interface.print("{s}", .{prompt});
+        try writer.interface.flush();
     }
+    return readLineFromFileAlloc(io, allocator, .stdin());
+}
 
-    /// Prints the REPL prompt. On nix* systems this is done by linenoise in readFn.
-    pub fn printPrompt(self: *Linenoise, prompt: []const u8) !void {
-        self.prompt = prompt;
-        if (is_windows and self.prompt.len > 0) {
-            try std.io.getStdOut().writer().print("{s}", .{self.prompt});
-        }
+pub fn addToHistory(entry: []const u8) !void {
+    if (!is_windows and entry.len > 0) {
+        const duped = try gc.allocator().dupeZ(u8, entry);
+        _ = linenoise.linenoiseHistoryAdd(duped.ptr);
     }
-
-    /// Add the given entry to the REPL history
-    pub fn addToHistory(_: *Linenoise, entry: []const u8) !void {
-        if (!is_windows and entry.len > 0) {
-            const duped = try gc.allocator().dupeZ(u8, entry);
-            // Linenoise takes a copy
-            _ = linenoise.linenoiseHistoryAdd(duped.ptr);
-        }
-    }
-
-    /// This satisfies the Reader interface. The first call will cause
-    /// linenoise to be invoked with an optional prompt. The returned line
-    /// is then consumed, after which EndOfStream is returned. Rinse and
-    /// repeat. For Windows, we simply delegate to stdin.
-    fn readFn(self: *@This(), dest: []u8) anyerror!usize {
-        var copy_count: usize = 0;
-        if (!is_windows) {
-            if (self.eof_next) {
-                self.eof_next = false;
-                return error.EndOfStream;
-            }
-
-            if (self.remaining == 0) {
-                // This gives us a [*c]u8...
-                const c_line = linenoise.linenoise(self.prompt.ptr);
-                if (c_line == null) {
-                    return error.EndOfStream;
-                }
-
-                // ...which we convert to a [:0]u8
-                self.line = std.mem.span(c_line);
-                self.remaining = self.line.?.len;
-                self.index = 0;
-            }
-
-            copy_count = @min(self.remaining, dest.len);
-            if (copy_count > 0) @memcpy(dest, self.line.?[self.index .. self.index + copy_count]);
-            self.remaining -= copy_count;
-            self.index += copy_count;
-
-            if (self.remaining == 0) {
-                self.eof_next = true;
-                //std.heap.c_allocator.free(self.line.?);
-            }
-            return copy_count;
-        } else {
-            return std.io.getStdIn().reader().read(dest);
-        }
-    }
-
-    pub const Reader = std.io.Reader(*@This(), anyerror, readFn);
-    pub fn reader(self: *@This()) Reader {
-        return .{ .context = self };
-    }
-};
-
-pub var linenoise_wrapper = Linenoise.init();
-pub var linenoise_reader = linenoise_wrapper.reader();
+}

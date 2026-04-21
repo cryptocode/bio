@@ -26,15 +26,22 @@ pub const Interpreter = struct {
     has_errors: bool = false,
     break_seen: bool = false,
     allocator: std.mem.Allocator,
+    io: std.Io,
+    stdin_buffer: *[4096]u8,
+    stdin_reader: std.Io.File.Reader,
 
     /// Set up the root environment by binding a core set of intrinsics.
     /// The rest of the standard Bio functions are loaded from std.lisp
-    pub fn init() !*Interpreter {
+    pub fn init(io: std.Io) !*Interpreter {
         var allocator = gc.allocator();
+        const stdin_buffer = try allocator.create([4096]u8);
         var instance = try allocator.create(Interpreter);
         instance.* = Interpreter{
             .env = try ast.makeEnv(null, "global"),
             .allocator = gc.allocator(),
+            .io = io,
+            .stdin_buffer = stdin_buffer,
+            .stdin_reader = std.Io.File.stdin().readerStreaming(io, stdin_buffer[0..]),
         };
 
         // Make all built-in functions, symbols and numeric constants available in the root environment
@@ -46,37 +53,38 @@ pub const Interpreter = struct {
     pub fn deinit(_: *Interpreter) void {}
 
     /// Print user friendly errors
-    pub fn printError(_: *Interpreter, err: anyerror) !void {
+    pub fn printError(self: *Interpreter, err: anyerror) !void {
         if (err == ExprErrors.AlreadyReported) return;
-        try std.io.getStdErr().writer().print("{s}\n", .{ast.errString(err)});
+        try stderrPrint(self.io, "{s}\n", .{ast.errString(err)});
     }
 
     /// Print a formatted runtime error message, including source information.
     pub fn printErrorFmt(self: *Interpreter, expr: *Expr, comptime fmt: []const u8, args: anytype) !void {
-        var stdout = std.io.getStdErr().writer();
+        var out: std.Io.Writer.Allocating = .init(gc.allocator());
+        defer out.deinit();
+        const stderr = &out.writer;
         if (expr.tok) |tok| {
             const file = if (tok.file.path) |path| path else "eval";
             const info = ast.SourceInfo.compute(tok);
-            try stdout.print("\x1b[1m{s}:{d}:{d}: error: ", .{ file, info.line + 1, info.column + 1 });
-            try stdout.print(fmt, args);
+            try stderr.print("\x1b[1m{s}:{d}:{d}: error: ", .{ file, info.line + 1, info.column + 1 });
+            try stderr.print(fmt, args);
 
-            // var line = try gc.allocator().dupe(u8, info.source_line);
             const content = tok.file.content;
             if (info.line_start <= tok.start and tok.end <= info.line_end) {
                 const indentation = "    ";
-                try stdout.print("\n", .{});
-                try stdout.print("\x1b[0m\n{s}", .{indentation});
-                try stdout.print("{s}", .{content[info.line_start..tok.start]});
-                try stdout.print("\x1b[92;4m{s}\x1b[0m", .{content[tok.start..tok.end]});
-                try stdout.print("{s}\n", .{content[tok.end..info.line_end]});
-                // Print ^----- indicator
+                try stderr.print("\n", .{});
+                try stderr.print("\x1b[0m\n{s}", .{indentation});
+                try stderr.print("{s}", .{content[info.line_start..tok.start]});
+                try stderr.print("\x1b[92;4m{s}\x1b[0m", .{content[tok.start..tok.end]});
+                try stderr.print("{s}\n", .{content[tok.end..info.line_end]});
                 const caret_offset = tok.start - info.line_start;
                 const filler = try gc.allocator().alloc(u8, caret_offset);
                 @memset(filler, ' ');
-                try stdout.print("\x1b[92m{s}{s}✗~~~\x1b[0m", .{ indentation, filler });
+                try stderr.print("\x1b[92m{s}{s}✗~~~\x1b[0m", .{ indentation, filler });
             }
-        } else try stdout.print(fmt, args);
-        try stdout.print("\n", .{});
+        } else try stderr.print(fmt, args);
+        try stderr.print("\n", .{});
+        try stderrWriteAll(self.io, try out.toOwnedSlice());
         self.has_errors = true;
     }
 
@@ -342,19 +350,17 @@ pub const Interpreter = struct {
             \\        ``         ''
         ;
 
-        try std.io.getStdOut().writer().print("{s}\n\n", .{logo});
-        var buf = std.ArrayList(u8).init(gc.allocator());
+        try stdoutPrint(self.io, "{s}\n\n", .{logo});
+        var buf = std.array_list.Managed(u8).init(gc.allocator());
 
         main_loop: while (true) {
             buf.clearRetainingCapacity();
             var file = ast.File{ .content = "" };
             var parser = ast.Parser.init(&file);
-            try linereader.linenoise_wrapper.printPrompt("bio: ");
+            const initial_line = try linereader.readLine(gc.allocator(), self.io, "bio: ") orelse return;
+            try buf.appendSlice(initial_line);
 
             while (true) {
-                // We're not actually seeing \n, instead linenoise hands us an EOF error, which we ignore
-                linereader.linenoise_reader.streamUntilDelimiter(buf.writer(), '\n', null) catch {};
-
                 parser.updateSource(buf.items);
                 parser.parse() catch |err| {
                     try self.printError(err);
@@ -362,11 +368,13 @@ pub const Interpreter = struct {
                 };
 
                 if (parser.missingRightParen()) {
-                    try linereader.linenoise_wrapper.printPrompt("     ");
+                    const continuation = try linereader.readLine(gc.allocator(), self.io, "     ") orelse return;
+                    try buf.append('\n');
+                    try buf.appendSlice(continuation);
                 } else break;
             }
 
-            _ = try linereader.linenoise_wrapper.addToHistory(buf.items);
+            try linereader.addToHistory(buf.items);
 
             for (parser.cur.val.lst.items) |expr| {
                 var res = self.eval(self.env, expr) catch |err| {
@@ -376,9 +384,9 @@ pub const Interpreter = struct {
                 // Update the last expression and print it
                 try self.env.put("#?", res);
                 if (!res.isNil() or self.verbose) {
-                    try res.print();
+                    try res.print(self.io);
                 }
-                try std.io.getStdOut().writer().print("\n", .{});
+                try stdoutPrint(self.io, "\n", .{});
 
                 if (self.exit_code) |exit_code| {
                     self.deinit();
@@ -386,6 +394,26 @@ pub const Interpreter = struct {
                 }
             }
         }
-        try std.io.getStdOut().writer().print("Got {s}\n", .{buf.items});
     }
 };
+
+fn stderrPrint(io: std.Io, comptime fmt: []const u8, args: anytype) !void {
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.File.stderr().writer(io, &buffer);
+    try writer.interface.print(fmt, args);
+    try writer.interface.flush();
+}
+
+fn stderrWriteAll(io: std.Io, bytes: []const u8) !void {
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.File.stderr().writer(io, &buffer);
+    try writer.interface.writeAll(bytes);
+    try writer.interface.flush();
+}
+
+fn stdoutPrint(io: std.Io, comptime fmt: []const u8, args: anytype) !void {
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.File.stdout().writer(io, &buffer);
+    try writer.interface.print(fmt, args);
+    try writer.interface.flush();
+}

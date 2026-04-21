@@ -482,5 +482,4 @@
 
     (var module-name "Test Module")
     (var module-version '(1 0))
-    (self)
-))
+    (self)))

@@ -7,26 +7,10 @@ const gc = @import("boehm.zig");
 var interned_intrinsics: std.StringArrayHashMapUnmanaged(*Expr) = .{};
 var interned_syms: std.StringArrayHashMapUnmanaged(void) = .{};
 var interned_nums: std.AutoHashMapUnmanaged(i16, *Expr) = .{};
-const EnumField = std.builtin.Type.EnumField;
 
 /// Generate an enum for built-ins where each field corresponds
 /// to a public decl in intrinsics.zig
-pub const Intrinsic = v: {
-    const decls = std.meta.declarations(intrinsics);
-    var fields: []const EnumField = &[_]EnumField{};
-    for (decls, 0..) |decl, i| {
-        fields = fields ++ &[_]EnumField{.{
-            .name = decl.name,
-            .value = i,
-        }};
-    }
-    break :v @Type(.{ .Enum = .{
-        .fields = fields,
-        .tag_type = std.math.IntFittingRange(0, fields.len),
-        .decls = &[_]std.builtin.Type.Declaration{},
-        .is_exhaustive = false,
-    } });
-};
+pub const Intrinsic = std.meta.DeclEnum(intrinsics);
 
 /// Generate a map from the Intrinsic enum fields to a built-in expression.
 /// Use the `getIntrinsic` function to perform lookups into this map.
@@ -39,9 +23,9 @@ const intrinsic_map = v: {
         if (@hasDecl(intrinsics, @tagName(tag))) {
             const field = @field(intrinsics, f.name);
             arr[@intFromEnum(tag)] = switch (@typeInfo(@TypeOf(field))) {
-                .Fn => &.{ .val = ExprValue{ .fun = @field(intrinsics, f.name) } },
-                .Float => &.{ .val = ExprValue{ .num = @field(intrinsics, f.name) } },
-                .Void => &.{ .val = ExprValue{ .sym = f.name } },
+                .@"fn" => &.{ .val = ExprValue{ .fun = @field(intrinsics, f.name) } },
+                .float => &.{ .val = ExprValue{ .num = @field(intrinsics, f.name) } },
+                .void => &.{ .val = ExprValue{ .sym = f.name } },
                 else => @compileError("Unsupported type for intrinsic named " ++ f.name),
             };
         } else @compileError("All public decls should have a generated Intrinsic entry");
@@ -415,7 +399,7 @@ pub const Parser = struct {
     tokenizer: Tokenizer,
     /// A list expression containing parsed expressions
     cur: *Expr = undefined,
-    list_stack: std.ArrayList(*Expr),
+    list_stack: std.array_list.Managed(*Expr),
     prev_token: ?Token = null,
 
     pub fn init(file: *File) @This() {
@@ -424,17 +408,17 @@ pub const Parser = struct {
             .file = file,
             // Create a top-level list containing all parsed expressions
             .cur = makeListExpr(null) catch unreachable,
-            .list_stack = std.ArrayList(*Expr).init(gc.allocator()),
+            .list_stack = std.array_list.Managed(*Expr).init(gc.allocator()),
         };
     }
 
     /// Returns a list expression where each entry can be evaluated.
     /// The `file_path`, if given, will be used in error messages.
     pub fn parseMultipleExpressionsFromReader(reader: anytype, file_path: ?[]const u8) !*Expr {
-        var source = std.ArrayList(u8).init(gc.allocator());
-        const writer = source.writer();
-        try util.copyBytes(reader, writer);
-        return parseMultipleExpressions(try source.toOwnedSlice(), file_path);
+        var out: std.Io.Writer.Allocating = .init(gc.allocator());
+        defer out.deinit();
+        try util.copyBytes(reader, &out.writer);
+        return parseMultipleExpressions(try out.toOwnedSlice(), file_path);
     }
 
     /// Returns a list expression where each entry can be evaluated.
@@ -472,7 +456,7 @@ pub const Parser = struct {
                         return error.TooManyRightParens;
                     }
                     const completed_list = self.cur;
-                    self.cur = self.list_stack.pop();
+                    self.cur = self.list_stack.pop().?;
                     std.debug.assert(completed_list != self.cur);
                     std.debug.assert(self.cur.val == .lst);
                     try self.cur.val.lst.append(completed_list);
@@ -548,7 +532,7 @@ pub const Parser = struct {
                 self.cur.val.lst.items[0].isIntrinsic(.@"unquote-splicing")))
             {
                 const completed_list = self.cur;
-                self.cur = self.list_stack.pop();
+                self.cur = self.list_stack.pop().?;
                 try self.cur.val.lst.append(completed_list);
             }
             self.prev_token = tok;
@@ -653,10 +637,10 @@ pub fn typeString(etype: ExprType) []const u8 {
 pub const ExprValue = union(ExprType) {
     sym: []const u8,
     num: f64,
-    lst: std.ArrayList(*Expr),
-    map: std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true),
-    lam: std.ArrayList(*Expr),
-    mac: std.ArrayList(*Expr),
+    lst: std.array_list.Managed(*Expr),
+    map: std.array_hash_map.Custom(*Expr, *Expr, Expr.HashUtil, true),
+    lam: std.array_list.Managed(*Expr),
+    mac: std.array_list.Managed(*Expr),
     fun: IntrinsicFn,
     env: *Env,
     err: *Expr,
@@ -733,7 +717,7 @@ pub const Expr = struct {
         if (self.val == ExprType.lst) {
             self.val.lst.deinit();
         } else if (self.val == ExprType.map) {
-            self.val.map.deinit();
+            self.val.map.deinit(gc.allocator());
         } else if (self.val == ExprType.lam) {
             self.val.lam.deinit();
         } else if (self.val == ExprType.mac) {
@@ -769,49 +753,52 @@ pub const Expr = struct {
                 return try std.fmt.allocPrint(allocator, "{s}", .{err_str});
             },
             ExprValue.lst => |lst| {
-                var buf = std.ArrayList(u8).init(allocator);
-                defer buf.deinit();
-                var bufWriter = buf.writer();
+                var out: std.Io.Writer.Allocating = .init(allocator);
+                defer out.deinit();
+                const writer = &out.writer;
 
-                try bufWriter.writeAll("(");
+                try writer.writeAll("(");
                 for (lst.items, 0..) |item, index| {
                     const itemBuf = try item.toStringAlloc();
-                    try bufWriter.writeAll(itemBuf);
+                    try writer.writeAll(itemBuf);
                     if (index + 1 < lst.items.len) {
-                        try bufWriter.writeAll(" ");
+                        try writer.writeAll(" ");
                     }
                 }
-                try bufWriter.writeAll(")");
-                return buf.toOwnedSlice();
+                try writer.writeAll(")");
+                return try out.toOwnedSlice();
             },
             ExprValue.map => |map| {
-                var buf = std.ArrayList(u8).init(allocator);
-                defer buf.deinit();
-                var bufWriter = buf.writer();
+                var out: std.Io.Writer.Allocating = .init(allocator);
+                defer out.deinit();
+                const writer = &out.writer;
 
                 // Output is ((key val)(key val)(key val))
-                try bufWriter.writeAll("(");
+                try writer.writeAll("(");
                 var it = map.iterator();
                 while (it.next()) |entry| {
                     const key = try entry.key_ptr.*.toStringAlloc();
                     const val = try entry.value_ptr.*.toStringAlloc();
 
-                    try bufWriter.writeAll("(");
-                    try bufWriter.writeAll(key);
-                    try bufWriter.writeAll(" ");
-                    try bufWriter.writeAll(val);
-                    try bufWriter.writeAll(")");
+                    try writer.writeAll("(");
+                    try writer.writeAll(key);
+                    try writer.writeAll(" ");
+                    try writer.writeAll(val);
+                    try writer.writeAll(")");
                 }
-                try bufWriter.writeAll(")");
-                return try buf.toOwnedSlice();
+                try writer.writeAll(")");
+                return try out.toOwnedSlice();
             },
         }
     }
 
     /// Prints the expression to stderr
-    pub fn print(self: *@This()) anyerror!void {
+    pub fn print(self: *@This(), io: std.Io) anyerror!void {
         const str = try self.toStringAlloc();
-        std.debug.print("{s}", .{str});
+        var buffer: [4096]u8 = undefined;
+        var writer = std.Io.File.stdout().writer(io, &buffer);
+        try writer.interface.writeAll(str);
+        try writer.interface.flush();
     }
 };
 
@@ -838,7 +825,7 @@ pub const Env = struct {
         }
     };
 
-    map: std.ArrayHashMap(*Expr, *Expr, Env.HashUtil, true),
+    map: std.array_hash_map.Custom(*Expr, *Expr, Env.HashUtil, true),
     parent: ?*@This() = null,
     name: []const u8,
 
@@ -856,7 +843,7 @@ pub const Env = struct {
     }
 
     pub fn deinit(self: *@This()) void {
-        self.map.deinit();
+        self.map.deinit(gc.allocator());
     }
 
     /// Put symbol/value, duplicating the key, replacing any existing value
@@ -873,7 +860,7 @@ pub const Env = struct {
 
     /// Put symbol/value, replacing any existing value
     pub fn putWithSymbol(self: *@This(), variable_name: *Expr, val: *Expr) anyerror!void {
-        try self.map.put(variable_name, val);
+        try self.map.put(gc.allocator(), variable_name, val);
     }
 
     /// Look up an expression in this or a parent environment
@@ -915,7 +902,7 @@ pub fn makeEnv(parent: ?*Env, name: []const u8) !*Env {
     var allocator = gc.allocator();
     var env = try allocator.create(Env);
     env.parent = parent;
-    env.map = @TypeOf(env.map).init(allocator);
+    env.map = .empty;
     env.name = name;
     return env;
 }
@@ -997,7 +984,7 @@ pub fn makeSymbol(buf: []const u8, take_ownership: bool) anyerror!*Expr {
 pub fn makeListExpr(initial_expressions: ?[]const *Expr) !*Expr {
     const allocator = gc.allocator();
     var expr = try Expr.create(true);
-    expr.val = ExprValue{ .lst = std.ArrayList(*Expr).init(allocator) };
+    expr.val = ExprValue{ .lst = std.array_list.Managed(*Expr).init(allocator) };
     if (initial_expressions) |expressions| {
         for (expressions) |e| {
             try expr.val.lst.append(e);
@@ -1009,13 +996,12 @@ pub fn makeListExpr(initial_expressions: ?[]const *Expr) !*Expr {
 /// Make a hashmap expression
 /// If `initial_expressions` is not null, each item as added *without evaluation*
 pub fn makeHashmapExpr(initial_expressions: ?[]const *Expr) !*Expr {
-    const allocator = gc.allocator();
     var expr = try Expr.create(true);
-    expr.val = ExprValue{ .map = std.ArrayHashMap(*Expr, *Expr, Expr.HashUtil, true).init(allocator) };
+    expr.val = ExprValue{ .map = .empty };
 
     if (initial_expressions) |expressions| {
         for (expressions) |e| {
-            try expr.val.map.put(e.val.lst.items[0], e.val.lst.items[1]);
+            try expr.val.map.put(gc.allocator(), e.val.lst.items[0], e.val.lst.items[1]);
         }
     }
     return expr;
@@ -1030,7 +1016,7 @@ pub fn makeLambdaExpr(env: *Env) !*Expr {
     // time of lambda definition. This will be the parent environment whenever we
     // are invoking the lambda in Interpreter#eval
     expr.env = env;
-    expr.val = ExprValue{ .lam = std.ArrayList(*Expr).init(allocator) };
+    expr.val = ExprValue{ .lam = std.array_list.Managed(*Expr).init(allocator) };
     return expr;
 }
 
@@ -1038,7 +1024,7 @@ pub fn makeLambdaExpr(env: *Env) !*Expr {
 pub fn makeMacroExpr() !*Expr {
     const allocator = gc.allocator();
     var expr = try Expr.create(true);
-    expr.val = ExprValue{ .mac = std.ArrayList(*Expr).init(allocator) };
+    expr.val = ExprValue{ .mac = std.array_list.Managed(*Expr).init(allocator) };
     return expr;
 }
 
